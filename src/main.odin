@@ -23,7 +23,11 @@ main :: proc() {
 		}
 	}
 
-	reader.read_line("$ ")
+	r: reader.ReaderState
+	reader.reader_ini(&r, "$  ")
+	defer reader.reader_fini(&r)
+
+	reader.read_line(&r)
 
 }
 

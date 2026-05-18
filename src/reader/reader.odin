@@ -29,9 +29,14 @@ ReaderState :: struct {
 	prompt_len: int,
 }
 
-read_line :: proc(prompt: string) -> string {
+reader_ini :: proc(r: ^ReaderState, prompt: string) {
+	r^ = ReaderState{make([dynamic]rune), 0, prompt, len(prompt)}
+}
 
-	r := ReaderState{make([dynamic]rune), 0, prompt, len(prompt)}
+reader_fini :: proc(r: ^ReaderState) {
+	delete(r.buffer)
+}
+read_line :: proc(r: ^ReaderState) -> string {
 
 	if (!posix.isatty(posix.STDIN_FILENO)) {
 		//read from file
@@ -39,7 +44,7 @@ read_line :: proc(prompt: string) -> string {
 	enable_raw_mode()
 	defer disable_raw_mode()
 
-	read(&r)
+	read(r)
 
 	return utf8.runes_to_string(r.buffer[:])
 
@@ -66,6 +71,7 @@ read :: proc(r: ^ReaderState) {
 	}
 }
 
+@(private)
 render :: proc(r: ^ReaderState, stream: io.Stream) {
 
 	sb: strings.Builder
