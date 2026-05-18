@@ -1,33 +1,23 @@
 package main
 
+import "core:os"
 
-import "core:fmt"
-import "core:mem"
 import "reader"
 
 
 main :: proc() {
-	when ODIN_DEBUG {
-		track: mem.Tracking_Allocator
-		mem.tracking_allocator_init(&track, context.allocator)
-		context.allocator = mem.tracking_allocator(&track)
-
-		defer {
-			if len(track.allocation_map) > 0 {
-				fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
-				for _, entry in track.allocation_map {
-					fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
-				}
-			}
-			mem.tracking_allocator_destroy(&track)
-		}
-	}
 
 	r: reader.ReaderState
 	reader.reader_ini(&r, "$  ")
 	defer reader.reader_fini(&r)
 
-	reader.read_line(&r)
+	if len(os.args) >= 2 {
+	} else {
+		stream := os.to_stream(os.stdin)
+		defer os.close(os.stdin)
+		reader.read_line(&r, stream)
+	}
+
 
 }
 
