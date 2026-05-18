@@ -11,8 +11,16 @@ import posix "core:sys/posix"
 ESC :: "\x1b"
 CSI :: ESC + "["
 
-clear_screen := CSI + "2J"
-cursor_home := CSI + "H"
+Cursor :: enum {
+	ClearScreen,
+	Home,
+}
+
+CursorControl :: [Cursor]string {
+	.ClearScreen = CSI + "2J",
+	.Home        = CSI + "H",
+}
+
 
 ReaderState :: struct {
 	buffer:     [dynamic]rune,
@@ -41,18 +49,42 @@ read :: proc(r: ^ReaderState) {
 	stream := os.to_stream(os.stdin)
 	render(r, stream)
 	for {
+		ch, size, err := io.read_rune(stream)
+
+		switch {
+		case err != nil:
+			if err == .EOF {
+				break
+			}
+			continue
+		case:
+			append(&r.buffer, ch)
+			r.cursor_pos += 1
+			render(r, stream)
+
+		}
 	}
 }
 
 render :: proc(r: ^ReaderState, stream: io.Stream) {
 
-	io.write(stream, transmute([]byte)cursor_home)
-	io.write(stream, transmute([]byte)clear_screen)
-	io.write(stream, transmute([]byte)r.prompt)
-	//move cursor to prompt+len
 	sb: strings.Builder
-	st := fmt.sbprintf(&sb, "%s%dG", CSI, r.prompt_len)
-	io.write(stream, transmute([]byte)st)
+	strings.builder_init(&sb)
+	defer strings.builder_destroy(&sb)
+
+	strings.write_string(&sb, CursorControl[.Home])
+	strings.write_string(&sb, CursorControl[.ClearScreen])
+
+	strings.write_string(&sb, r.prompt)
+
+	for ch in r.buffer {
+		strings.write_rune(&sb, ch)
+	}
+
+	cursor_col := r.prompt_len + r.cursor_pos + 1
+	fmt.sbprintf(&sb, "%s%dG", CSI, cursor_col)
+
+	io.write(stream, sb.buf[:])
 
 
 }

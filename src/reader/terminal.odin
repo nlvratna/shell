@@ -13,8 +13,8 @@ enable_raw_mode :: proc() {
 	raw := termios
 	raw.c_iflag -= {.BRKINT, .ICRNL, .INPCK, .ISTRIP, .IXON}
 	raw.c_lflag -= {.ECHO, .ICANON, .IEXTEN}
-	raw.c_cc[.VMIN] = 0
-	raw.c_cc[.VTIME] = 1
+	raw.c_cc[.VMIN] = 1
+	raw.c_cc[.VTIME] = 0
 
 	result = posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &raw)
 	assert(result == .OK)
