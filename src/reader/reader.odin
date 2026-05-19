@@ -7,7 +7,6 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 
-import posix "core:sys/posix"
 
 ESC :: "\x1b"
 CSI :: ESC + "["
@@ -126,20 +125,11 @@ reader_fini :: proc(r: ^ReaderState) {
 	delete(r.buffer)
 	free(r)
 }
-read_line :: proc(r: ^ReaderState, file: ^os.File) -> string {
+read_line :: proc(r: ^ReaderState) -> string {
 
 	clear(&r.buffer)
 	r.cursor_pos = 0
-
-
-	if (!posix.isatty(posix.STDIN_FILENO)) {
-		//read from file
-	}
-
-	enable_raw_mode()
-	defer disable_raw_mode()
-
-	stream := os.to_stream(file)
+	stream := os.to_stream(os.stdin)
 	read(r, stream)
 
 	return utf8.runes_to_string(r.buffer[:], context.temp_allocator)
