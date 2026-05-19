@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:io"
 import "core:os"
 import "core:strings"
+import "core:unicode"
 import "core:unicode/utf8"
 
 import posix "core:sys/posix"
@@ -13,6 +14,7 @@ CSI :: ESC + "["
 
 Cursor :: enum {
 	ClearScreen,
+	ClearLine,
 	Home,
 }
 
@@ -21,6 +23,7 @@ Key :: enum {
 	Ctrl_C,
 	Ctrl_D,
 	Ctrl_L,
+	Ctrl_W,
 	BackSpace,
 	Tab,
 	Enter,
@@ -64,6 +67,8 @@ read_key :: proc(stream: io.Stream) -> Input {
 		return .Tab
 	case 10, 13:
 		return .Enter
+	case 23:
+		return .Ctrl_W
 	case 27:
 		second, size, err := io.read_rune(stream)
 
@@ -93,6 +98,7 @@ read_key :: proc(stream: io.Stream) -> Input {
 
 CursorControl :: [Cursor]string {
 	.ClearScreen = CSI + "2J",
+	.ClearLine   = CSI + "2K",
 	.Home        = CSI + "H",
 }
 
@@ -104,24 +110,39 @@ ReaderState :: struct {
 	prompt_len: int,
 }
 
-reader_ini :: proc(r: ^ReaderState, prompt: string) {
-	r^ = ReaderState{make([dynamic]rune), 0, prompt, len(prompt)}
+reader_ini :: proc(prompt: string) -> ^ReaderState {
+	r := new(ReaderState)
+
+	r^ = ReaderState {
+		buffer     = make([dynamic]rune),
+		cursor_pos = 0,
+		prompt     = prompt,
+		prompt_len = len(prompt),
+	}
+	return r
 }
 
 reader_fini :: proc(r: ^ReaderState) {
 	delete(r.buffer)
+	free(r)
 }
-read_line :: proc(r: ^ReaderState, stream: io.Stream) -> string {
+read_line :: proc(r: ^ReaderState, file: ^os.File) -> string {
+
+	clear(&r.buffer)
+	r.cursor_pos = 0
+
 
 	if (!posix.isatty(posix.STDIN_FILENO)) {
 		//read from file
 	}
+
 	enable_raw_mode()
 	defer disable_raw_mode()
 
+	stream := os.to_stream(file)
 	read(r, stream)
 
-	return utf8.runes_to_string(r.buffer[:])
+	return utf8.runes_to_string(r.buffer[:], context.temp_allocator)
 
 }
 
@@ -133,11 +154,33 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 		switch v in key {
 		case rune:
 			if v == 'q' {
-				os.exit(1) //for now
+				disable_raw_mode()
+				os.exit(1) //for now //replace with exit later
 			}
 			add_to_buffer(r, v)
 			render(r, stream)
 		case Key:
+			#partial switch v {
+			case .Ctrl_C:
+				handle_ctrlc(r, stream)
+			case .Ctrl_L:
+				io.write_string(stream, CursorControl[.ClearScreen])
+				io.write_string(stream, CursorControl[.Home])
+
+				render(r, stream)
+			case .Enter:
+				io.write_string(stream, "\n")
+				render(r, stream)
+				return
+			case .BackSpace:
+				delete_from_buffer(r)
+				render(r, stream)
+			case .Tab:
+			//how to handle this?
+			case .Ctrl_W:
+				delete_word(r)
+				render(r, stream)
+			}
 		}
 
 	}
@@ -150,8 +193,8 @@ render :: proc(r: ^ReaderState, stream: io.Stream) {
 	strings.builder_init(&sb)
 	defer strings.builder_destroy(&sb)
 
-	strings.write_string(&sb, CursorControl[.Home])
-	strings.write_string(&sb, CursorControl[.ClearScreen])
+	strings.write_string(&sb, "\r")
+	strings.write_string(&sb, CursorControl[.ClearLine])
 
 	strings.write_string(&sb, r.prompt)
 
@@ -175,5 +218,45 @@ add_to_buffer :: proc(r: ^ReaderState, ch: rune) {
 		inject_at(&r.buffer, r.cursor_pos, ch)
 	}
 	r.cursor_pos += 1
+}
+
+@(private = "file")
+delete_from_buffer :: proc(r: ^ReaderState) {
+	if len(r.buffer) == 0 {
+		return
+	}
+	ordered_remove(&r.buffer, r.cursor_pos - 1)
+	r.cursor_pos -= 1
+}
+
+@(private = "file")
+delete_word :: proc(r: ^ReaderState) {
+	if len(r.buffer) == 0 || r.cursor_pos == 0 {
+		return
+	}
+
+	curr_pos := r.cursor_pos - 1
+
+	for curr_pos >= 0 && unicode.is_white_space(r.buffer[curr_pos]) {
+		ordered_remove(&r.buffer, curr_pos)
+		curr_pos -= 1
+	}
+
+	for curr_pos >= 0 && !unicode.is_white_space(r.buffer[curr_pos]) {
+		ordered_remove(&r.buffer, curr_pos)
+		curr_pos -= 1
+	}
+	r.cursor_pos = curr_pos + 1
+}
+
+
+handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
+
+	io.write_string(stream, "\r\n")
+
+	clear(&r.buffer)
+	r.cursor_pos = 0
+
+	render(r, stream)
 }
 
