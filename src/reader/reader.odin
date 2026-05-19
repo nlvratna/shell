@@ -1,5 +1,4 @@
 package reader
-
 import "core:fmt"
 import "core:io"
 import "core:os"
@@ -167,9 +166,21 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 				render(r, stream)
 			case .Tab:
 			//how to handle this?
+			//TODO:add searching for binaries and show them?
 			case .Ctrl_W:
 				delete_word(r)
 				render(r, stream)
+			case .Left_Arrow:
+				move_left(r)
+				render(r, stream)
+			case .Right_Arrow:
+				move_right(r)
+				render(r, stream)
+
+			// case .Up_Arrow:
+			// //history up                //TODO:Add histories
+			// case .Down_Arrow:
+			// //history down
 			}
 		}
 
@@ -248,5 +259,24 @@ handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
 	r.cursor_pos = 0
 
 	render(r, stream)
+}
+
+
+move_left :: proc(r: ^ReaderState) {
+	if r.cursor_pos == 0 {
+		return
+	}
+	r.cursor_pos -= 1
+}
+
+
+move_right :: proc(r: ^ReaderState) {
+	if r.cursor_pos == 0 && len(r.buffer) == 0 {
+		return
+	}
+	if r.cursor_pos == len(r.buffer) {
+		return
+	}
+	r.cursor_pos += 1
 }
 
