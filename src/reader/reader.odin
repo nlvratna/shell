@@ -124,8 +124,8 @@ reader_fini :: proc(r: ^ReaderState) {
 	delete(r.buffer)
 	free(r)
 }
-read_line :: proc(r: ^ReaderState) -> string {
 
+read_line :: proc(r: ^ReaderState) -> string {
 	clear(&r.buffer)
 	r.cursor_pos = 0
 	stream := os.to_stream(os.stdin)
@@ -135,7 +135,100 @@ read_line :: proc(r: ^ReaderState) -> string {
 
 }
 
+@(private)
 read :: proc(r: ^ReaderState, stream: io.Stream) {
+	render :: proc(r: ^ReaderState, stream: io.Stream) {
+
+		sb: strings.Builder
+		strings.builder_init(&sb, context.temp_allocator)
+		defer strings.builder_destroy(&sb)
+
+		strings.write_string(&sb, "\r")
+		strings.write_string(&sb, CursorControl[.ClearLine])
+
+		strings.write_string(&sb, r.prompt)
+
+		for ch in r.buffer {
+			strings.write_rune(&sb, ch)
+		}
+
+		cursor_col := r.prompt_len + r.cursor_pos + 1
+		fmt.sbprintf(&sb, "%s%dG", CSI, cursor_col)
+
+		io.write(stream, sb.buf[:])
+
+
+	}
+
+
+	add_to_buffer :: proc(r: ^ReaderState, ch: rune) {
+		if r.cursor_pos == len(r.buffer) {
+			append(&r.buffer, ch)
+		} else {
+			inject_at(&r.buffer, r.cursor_pos, ch)
+		}
+		r.cursor_pos += 1
+	}
+
+
+	delete_from_buffer :: proc(r: ^ReaderState) {
+		if len(r.buffer) == 0 {
+			return
+		}
+		ordered_remove(&r.buffer, r.cursor_pos - 1)
+		r.cursor_pos -= 1
+	}
+
+	delete_word :: proc(r: ^ReaderState) {
+		if len(r.buffer) == 0 || r.cursor_pos == 0 {
+			return
+		}
+
+		curr_pos := r.cursor_pos - 1
+
+		for curr_pos >= 0 && unicode.is_white_space(r.buffer[curr_pos]) {
+			ordered_remove(&r.buffer, curr_pos)
+			curr_pos -= 1
+		}
+
+		for curr_pos >= 0 && !unicode.is_white_space(r.buffer[curr_pos]) {
+			ordered_remove(&r.buffer, curr_pos)
+			curr_pos -= 1
+		}
+		r.cursor_pos = curr_pos + 1
+	}
+
+
+	handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
+
+		io.write_string(stream, "\r\n")
+
+		clear(&r.buffer)
+		r.cursor_pos = 0
+
+		render(r, stream)
+	}
+
+
+	move_left :: proc(r: ^ReaderState) {
+		if r.cursor_pos == 0 {
+			return
+		}
+		r.cursor_pos -= 1
+	}
+
+
+	move_right :: proc(r: ^ReaderState) {
+		if r.cursor_pos == 0 && len(r.buffer) == 0 {
+			return
+		}
+		if r.cursor_pos == len(r.buffer) {
+			return
+		}
+		r.cursor_pos += 1
+	}
+
+
 	render(r, stream)
 	for {
 		key := read_key(stream)
@@ -185,98 +278,5 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 		}
 
 	}
-}
-
-@(private)
-render :: proc(r: ^ReaderState, stream: io.Stream) {
-
-	sb: strings.Builder
-	strings.builder_init(&sb)
-	defer strings.builder_destroy(&sb)
-
-	strings.write_string(&sb, "\r")
-	strings.write_string(&sb, CursorControl[.ClearLine])
-
-	strings.write_string(&sb, r.prompt)
-
-	for ch in r.buffer {
-		strings.write_rune(&sb, ch)
-	}
-
-	cursor_col := r.prompt_len + r.cursor_pos + 1
-	fmt.sbprintf(&sb, "%s%dG", CSI, cursor_col)
-
-	io.write(stream, sb.buf[:])
-
-
-}
-
-@(private = "file")
-add_to_buffer :: proc(r: ^ReaderState, ch: rune) {
-	if r.cursor_pos == len(r.buffer) {
-		append(&r.buffer, ch)
-	} else {
-		inject_at(&r.buffer, r.cursor_pos, ch)
-	}
-	r.cursor_pos += 1
-}
-
-@(private = "file")
-delete_from_buffer :: proc(r: ^ReaderState) {
-	if len(r.buffer) == 0 {
-		return
-	}
-	ordered_remove(&r.buffer, r.cursor_pos - 1)
-	r.cursor_pos -= 1
-}
-
-@(private = "file")
-delete_word :: proc(r: ^ReaderState) {
-	if len(r.buffer) == 0 || r.cursor_pos == 0 {
-		return
-	}
-
-	curr_pos := r.cursor_pos - 1
-
-	for curr_pos >= 0 && unicode.is_white_space(r.buffer[curr_pos]) {
-		ordered_remove(&r.buffer, curr_pos)
-		curr_pos -= 1
-	}
-
-	for curr_pos >= 0 && !unicode.is_white_space(r.buffer[curr_pos]) {
-		ordered_remove(&r.buffer, curr_pos)
-		curr_pos -= 1
-	}
-	r.cursor_pos = curr_pos + 1
-}
-
-
-handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
-
-	io.write_string(stream, "\r\n")
-
-	clear(&r.buffer)
-	r.cursor_pos = 0
-
-	render(r, stream)
-}
-
-
-move_left :: proc(r: ^ReaderState) {
-	if r.cursor_pos == 0 {
-		return
-	}
-	r.cursor_pos -= 1
-}
-
-
-move_right :: proc(r: ^ReaderState) {
-	if r.cursor_pos == 0 && len(r.buffer) == 0 {
-		return
-	}
-	if r.cursor_pos == len(r.buffer) {
-		return
-	}
-	r.cursor_pos += 1
 }
 
