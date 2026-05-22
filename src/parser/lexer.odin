@@ -60,6 +60,25 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 		return true
 	}
 
+	is_identifier :: proc(text: string) -> bool {
+		if len(text) == 0 {
+			return false
+		}
+		for i in 0 ..< len(text) {
+			c := rune(text[i])
+			if i == 0 {
+				if !unicode.is_alpha(c) {
+					return false
+				}
+			} else {
+				if !unicode.is_alpha(c) && !unicode.is_digit(c) && c != '_' {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
 	is_assignment_word :: proc(text: string) -> bool {
 		id := strings.index_rune(text, '=')
 		if id <= 0 {return false}
@@ -104,6 +123,8 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 		kind = .RIGHTBRACE
 	case '!':
 		kind = .BANG
+	case '=':
+		kind = .EQUAL
 	case ';':
 		if t.ch == ';' {
 			kind = .DSEMI
@@ -136,10 +157,15 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 			kind = .LESS
 		}
 	case:
+		//everything else is a string in a shell
 		if ch == '\'' {
-			if !consume_quote(t, '\'') {return new_token("Unclosed single quote", .INVALID)}
+			if !consume_quote(t, '\'') {
+				return new_token("Unclosed single quote", .INVALID)
+			}
 		} else if ch == '"' {
-			if !consume_quote(t, '"') {return new_token("Unclosed double quote", .INVALID)}
+			if !consume_quote(t, '"') {
+				return new_token("Unclosed double quote", .INVALID)
+			}
 		}
 
 		for t.ch != utf8.RUNE_EOF {
@@ -162,14 +188,17 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 			}
 		}
 
-		lexeme := t.data[start_pos:t.offset]
+		text := t.data[start_pos:t.offset]
 
-		if is_all_digits(lexeme) && (t.ch == '<' || t.ch == '>') {
-			kind = .IONUMBER
+		if is_all_digits(text) {
+			if t.ch == '<' || t.ch == '>' {
+				kind = .IONUMBER
+			} else {
+				kind = .WORD //number
+			}
 		} else {
-			kind = look_up(lexeme)
-
-			if kind == .WORD && is_assignment_word(lexeme) {
+			kind = look_up(text)
+			if kind == .WORD && is_assignment_word(text) {
 				kind = .ASSIGNMENT_WORD
 			}
 		}

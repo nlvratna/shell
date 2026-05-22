@@ -122,6 +122,28 @@ test_lexer :: proc(t: ^testing.T) {
 				{text = "EOF", kind = .EOF},
 			},
 		},
+		{
+			name = "Test",
+			input = "echo hello\'world\'",
+			expected = []Token {
+				{text = "echo", kind = .WORD},
+				{text = "hello\'world\'", kind = .WORD},
+			},
+		},
+		{
+			name = "Standalone EQUAL Token (Custom Syntax)",
+			input = "FOO = bar test 1 = 1",
+			expected = []Token {
+				{text = "FOO", kind = .WORD},
+				{text = "=", kind = .EQUAL},
+				{text = "bar", kind = .WORD},
+				{text = "test", kind = .WORD},
+				{text = "1", kind = .WORD},
+				{text = "=", kind = .EQUAL},
+				{text = "1", kind = .WORD},
+				{text = "EOF", kind = .EOF},
+			},
+		},
 	}
 
 	for tc in tests {
@@ -130,8 +152,6 @@ test_lexer :: proc(t: ^testing.T) {
 
 		for expected_tok, i in tc.expected {
 			got_tok := get_token(&tokenizer)
-
-
 			testing.expectf(
 				t,
 				got_tok.kind == expected_tok.kind,

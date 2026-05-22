@@ -6,6 +6,7 @@ import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import posix "core:sys/posix"
+import "parser"
 import "reader"
 
 
@@ -68,7 +69,7 @@ exec :: proc() {
 	r := reader.reader_ini("$ ")
 	defer reader.reader_fini(r)
 	for {
-		reader.read_line(r)
+		data := reader.read_line(r)
 		free_all(context.temp_allocator)
 	}
 

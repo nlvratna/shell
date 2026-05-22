@@ -6,6 +6,7 @@ TokenKind :: enum {
 	WORD,
 	ASSIGNMENT_WORD,
 	IONUMBER,
+	EQUAL,
 
 
 	//
