@@ -1,9 +1,5 @@
 package parser
 
-Script :: struct {
-	commands: [dynamic]Command,
-}
-
 Command :: union {
 	^SimpleCommand,
 	^Pipeline,
