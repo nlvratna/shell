@@ -148,7 +148,7 @@ test_lexer :: proc(t: ^testing.T) {
 
 	for tc in tests {
 		tokenizer: Tokenizer
-		tokenizer_ini(&tokenizer, tc.input)
+		tokenizer_init(&tokenizer, tc.input)
 
 		for expected_tok, i in tc.expected {
 			got_tok := get_token(&tokenizer)

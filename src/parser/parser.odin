@@ -76,9 +76,9 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 		}
 
 		cmdlist := new(CommandList)
-		cmdlist.left = &left
+		cmdlist.left = left
 		cmdlist.operator = operator.kind
-		cmdlist.right = &right
+		cmdlist.right = right
 
 		left = cmdlist
 
