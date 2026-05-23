@@ -108,9 +108,7 @@ ReaderState :: struct {
 	prompt_len: int,
 }
 
-reader_ini :: proc(prompt: string) -> ^ReaderState {
-	r := new(ReaderState)
-
+reader_init :: proc(r: ^ReaderState, prompt: string) -> ^ReaderState {
 	r^ = ReaderState {
 		buffer     = make([dynamic]rune),
 		cursor_pos = 0,

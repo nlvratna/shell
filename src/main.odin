@@ -3,6 +3,7 @@ package shell
 import "core:bufio"
 import "core:fmt"
 import "core:mem"
+import "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
 import posix "core:sys/posix"
@@ -66,10 +67,26 @@ handle_file :: proc(file: ^os.File) {
 }
 
 exec :: proc() {
-	r := reader.reader_ini("$ ")
-	defer reader.reader_fini(r)
+	arena: virtual.Arena
+	if err := virtual.arena_init_growing(&arena); err != nil {
+		panic("Couldn't allocate memory")
+	}
+
+	defer virtual.arena_destroy(&arena)
+
+	r: reader.ReaderState
+
+	reader.reader_init(&r, "$ ")
+	defer reader.reader_fini(&r)
+
+
 	for {
-		data := reader.read_line(r)
+		data := reader.read_line(&r)
+		context.allocator = virtual.arena_allocator(&arena)
+
+		p: parser.Parser
+		parser.parser_init(&p, data)
+
 		free_all(context.temp_allocator)
 	}
 

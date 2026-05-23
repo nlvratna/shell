@@ -1,5 +1,9 @@
 package parser
 
+Program :: struct {
+	cmds: [dynamic]Command,
+}
+
 Command :: union {
 	^SimpleCommand,
 	^Pipeline,

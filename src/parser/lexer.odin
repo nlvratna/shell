@@ -11,7 +11,7 @@ Tokenizer :: struct {
 	w:      int,
 }
 
-tokenizer_ini :: proc(t: ^Tokenizer, data: string) {
+tokenizer_init :: proc(t: ^Tokenizer, data: string) {
 	t^ = Tokenizer {
 		offset = 0,
 		data   = data,
