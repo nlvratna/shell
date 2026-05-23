@@ -28,59 +28,59 @@ SimpleCommand :: struct {
 
 Pipeline :: struct {
 	bang:     bool,
-	commands: [dynamic]Command,
+	commands: [dynamic]^Command,
 }
 
 CommandList :: struct {
-	left:     Command,
+	left:     ^Command,
 	operator: TokenKind,
-	right:    Command,
+	right:    ^Command,
 }
 
 Subshell :: struct {
-	body: Command,
+	body: ^Command,
 }
 
 BraceGroup :: struct {
-	body: Command,
+	body: ^Command,
 }
 
 ForLoop :: struct {
 	variable: string,
 	items:    [dynamic]string,
-	body:     Command,
+	body:     ^Command,
 }
 
 WhileLoop :: struct {
-	condition: Command,
-	body:      Command,
+	condition: ^Command,
+	body:      ^Command,
 }
 
 UntilLoop :: struct {
-	condition: Command,
-	body:      Command,
+	condition: ^Command,
+	body:      ^Command,
 }
 
 IfClause :: struct {
-	condition:   Command,
-	then_branch: Command,
-	else_branch: Maybe(Command),
+	condition:   ^Command,
+	then_branch: ^Command,
+	else_branch: Maybe(^Command),
 }
 
 CaseItem :: struct {
 	patterns: [dynamic]string,
-	body:     Command,
+	body:     ^Command,
 }
 
 CaseClause :: struct {
 	word:  string,
-	items: [dynamic]CaseItem,
+	items: [dynamic]^CaseItem,
 }
 
 
 FuncDef :: struct {
 	name:      string,
-	body:      Command,
-	redirects: [dynamic]Redirect,
+	body:      ^Command,
+	redirects: [dynamic]^Redirect,
 }
 
