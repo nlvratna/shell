@@ -22,7 +22,6 @@ parser_init :: proc(p: ^Parser, data: string) {
 		t = t,
 	}
 
-	// ls -la || ls -lH
 	advance_token(p)
 	advance_token(p)
 
@@ -36,7 +35,17 @@ advance_token :: proc(p: ^Parser) {
 }
 
 
-match :: proc(p: ^Parser, texts: []string) -> bool {
+match_kind :: proc(p: ^Parser, kinds: []TokenKind) -> bool {
+	for kind in kinds {
+		if p.peek_token.kind == kind {
+			advance_token(p)
+			return true
+		}
+	}
+	return false
+}
+
+match_text :: proc(p: ^Parser, texts: []string) -> bool {
 	for text in texts {
 		if p.peek_token.text == text {
 			advance_token(p)
@@ -45,6 +54,18 @@ match :: proc(p: ^Parser, texts: []string) -> bool {
 	}
 	return false
 }
+
+match :: proc {
+	match_text,
+	match_kind,
+}
+
+skip_newlines :: proc(p: ^Parser) {
+	for p.peek_token.kind == .NEWLINE {
+		advance_token(p)
+	}
+}
+
 
 parse :: proc(p: ^Parser) -> (^Program, Error) {
 	prog := new(Program)
@@ -69,7 +90,7 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	if err != nil {
 		return nil, err
 	}
-	for match(p, {"||", "&&"}) {
+	for match(p, []TokenKind{.ORIF, .ANDIF}) {
 		operator := p.curr_token
 		right, err := parse_pipeline(p)
 		if err != nil {
@@ -91,10 +112,10 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 
 parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 
-	pipeline := new(Pipeline)
+	bang: bool
 
 	if p.curr_token.kind == .BANG {
-		pipeline.bang = true
+		bang = true
 		advance_token(p)
 	}
 
@@ -103,10 +124,17 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 		return nil, err
 	}
 
+	if !bang && p.curr_token.kind == .PIPE {
+		return cmd, nil
+	}
+
+	pipeline := new(Pipeline)
+	pipeline.bang = bang
+
 	append(&pipeline.commands, cmd)
 
 
-	for match(p, {"|"}) {
+	for match(p, []TokenKind{.PIPE}) {
 		cmd, err = parse_cmd(p)
 		if err != nil {
 			return pipeline, err
@@ -120,6 +148,83 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 
 
 parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
+	#partial switch p.curr_token.kind {
+
+	case .LEFTPAREN:
+		return parse_subshell_cmd(p)
+
+	case .FOR:
+		return parse_for_cmd(p)
+
+	case:
+		return parse_simple_cmd(p)
+	}
+}
+
+parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
+	//TODO
 	return nil, nil
+}
+
+parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, Error) {
+	advance_token(p)
+
+	subshell := new(Subshell)
+
+	cmd, err := parse_cmdlist(p)
+	if err != nil {
+		return nil, err
+	}
+
+	if !match(p, []TokenKind{.RIGHTPAREN}) {
+		return nil, .Unexpected_Token
+	}
+
+	subshell.body = cmd
+	return subshell, nil
+}
+
+parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
+	advance_token(p)
+
+	for_cmd := new(ForLoop)
+
+	if !match(p, []TokenKind{.WORD}) {
+		return nil, .Unexpected_Token
+	}
+
+	for_cmd.variable = p.curr_token.text
+
+	if !match(p, []TokenKind{.IN}) {
+		return nil, .Unexpected_Token
+	}
+
+	for match(p, []TokenKind{.WORD}) {
+		append(&for_cmd.items, p.curr_token.text)
+	}
+
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.SEMICOLON, .DO}) {
+		return nil, .Unexpected_Token
+	}
+
+	skip_newlines(p)
+
+	body, err := parse_cmdlist(p)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for_cmd.body = body
+
+	if !match(p, []TokenKind{.DONE}) {
+		return nil, .Unexpected_Token
+	}
+
+	return for_cmd, nil
+
+
 }
 
