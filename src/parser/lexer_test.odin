@@ -74,6 +74,17 @@ test_lexer :: proc(t: ^testing.T) {
 			},
 		},
 		{
+			name = "Pipeline test",
+			input = "! ls | grep \"word\"",
+			expected = []Token {
+				{text = "!", kind = .BANG},
+				{text = "ls", kind = .WORD},
+				{text = "|", kind = .PIPE},
+				{text = "grep", kind = .WORD},
+				{text = "\"word\"", kind = .WORD},
+			},
+		},
+		{
 			name = "Unclosed Double Quote (Error Handling)",
 			input = "echo \"unclosed string",
 			expected = []Token {

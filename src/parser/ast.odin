@@ -1,5 +1,6 @@
 package parser
 
+
 Program :: struct {
 	cmds: [dynamic]Command,
 }

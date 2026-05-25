@@ -250,7 +250,6 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 				render(r, stream)
 			case .Enter:
 				io.write_string(stream, "\n")
-				render(r, stream)
 				return
 			case .BackSpace:
 				delete_from_buffer(r)
@@ -267,7 +266,6 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			case .Right_Arrow:
 				move_right(r)
 				render(r, stream)
-
 			// case .Up_Arrow:
 			// //history up                //TODO:Add histories
 			// case .Down_Arrow:

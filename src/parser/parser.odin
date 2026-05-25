@@ -36,9 +36,9 @@ advance_token :: proc(p: ^Parser) {
 }
 
 
-match :: proc(p: ^Parser, kinds: []TokenKind) -> bool {
-	for kind in kinds {
-		if p.peek_token.kind == kind {
+match :: proc(p: ^Parser, texts: []string) -> bool {
+	for text in texts {
+		if p.peek_token.text == text {
 			advance_token(p)
 			return true
 		}
@@ -63,12 +63,13 @@ parse :: proc(p: ^Parser) -> (^Program, Error) {
 }
 
 
+// ! ls | grep "word" | echo && cat
 parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	left, err := parse_pipeline(p)
 	if err != nil {
 		return nil, err
 	}
-	for match(p, {.ORIF, .ANDIF}) {
+	for match(p, {"||", "&&"}) {
 		operator := p.curr_token
 		right, err := parse_pipeline(p)
 		if err != nil {
@@ -89,6 +90,36 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 }
 
 parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
+
+	pipeline := new(Pipeline)
+
+	if p.curr_token.kind == .BANG {
+		pipeline.bang = true
+		advance_token(p)
+	}
+
+	cmd, err := parse_cmd(p)
+	if err != nil {
+		return nil, err
+	}
+
+	append(&pipeline.commands, cmd)
+
+
+	for match(p, {"|"}) {
+		cmd, err = parse_cmd(p)
+		if err != nil {
+			return pipeline, err
+		}
+		append(&pipeline.commands, cmd)
+	}
+
+	return pipeline, nil
+
+}
+
+
+parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
 	return nil, nil
 }
 
