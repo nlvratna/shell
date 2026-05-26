@@ -93,4 +93,3 @@ look_up :: proc(text: string) -> TokenKind {
 new_token :: proc(text: string, kind: TokenKind) -> Token {
 	return Token{text = text, kind = kind}
 }
-

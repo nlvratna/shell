@@ -85,6 +85,7 @@ parse :: proc(p: ^Parser) -> (^Program, Error) {
 
 
 // ! ls | grep "word" | echo && cat
+// I am forgetting to check and pass the '['? and ']'
 parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	left, err := parse_pipeline(p)
 	if err != nil {
@@ -156,6 +157,8 @@ parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
 	case .FOR:
 		return parse_for_cmd(p)
 
+	case .IF:
+		return parse_if_cmd(p)
 	case:
 		return parse_simple_cmd(p)
 	}
@@ -170,12 +173,10 @@ parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, Error) {
 	advance_token(p)
 
 	subshell := new(Subshell)
-
 	cmd, err := parse_cmdlist(p)
 	if err != nil {
 		return nil, err
 	}
-
 	if !match(p, []TokenKind{.RIGHTPAREN}) {
 		return nil, .Unexpected_Token
 	}
@@ -188,11 +189,9 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 	advance_token(p)
 
 	for_cmd := new(ForLoop)
-
 	if !match(p, []TokenKind{.WORD}) {
 		return nil, .Unexpected_Token
 	}
-
 	for_cmd.variable = p.curr_token.text
 
 	if !match(p, []TokenKind{.IN}) {
@@ -202,21 +201,16 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 	for match(p, []TokenKind{.WORD}) {
 		append(&for_cmd.items, p.curr_token.text)
 	}
-
 	skip_newlines(p)
-
 	if !match(p, []TokenKind{.SEMICOLON, .DO}) {
 		return nil, .Unexpected_Token
 	}
-
 	skip_newlines(p)
 
 	body, err := parse_cmdlist(p)
-
 	if err != nil {
 		return nil, err
 	}
-
 	for_cmd.body = body
 
 	if !match(p, []TokenKind{.DONE}) {
@@ -224,7 +218,30 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 	}
 
 	return for_cmd, nil
+}
+
+parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
+	advance_token(p)
+
+	if_clause := new(IfClause)
+
+	condition, err := parse_cmdlist(p)
+	if err != nil {
+		return nil, err
+	}
+
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.THEN}) {
+		return nil, .Unexpected_Token
+	}
+
+	if_clause.then_branch, err = parse_cmdlist(p)
+	if err != nil {
+		return nil, err
+	}
 
 
+	return nil, nil
 }
 
