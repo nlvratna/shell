@@ -85,7 +85,6 @@ parse :: proc(p: ^Parser) -> (^Program, Error) {
 
 
 // ! ls | grep "word" | echo && cat
-// I am forgetting to check and pass the '['? and ']'
 parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	left, err := parse_pipeline(p)
 	if err != nil {
@@ -125,7 +124,7 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 		return nil, err
 	}
 
-	if !bang && p.curr_token.kind == .PIPE {
+	if !bang && p.curr_token.kind != .PIPE {
 		return cmd, nil
 	}
 
@@ -221,27 +220,63 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 }
 
 parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
+	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> Error {
+
+		condition := parse_cmdlist(p) or_return
+		if_cmd.condition = condition
+
+		if match(p, []TokenKind{.SEMICOLON}) {}
+
+		skip_newlines(p)
+
+		if !match(p, []TokenKind{.THEN}) {
+			return .Unexpected_Token
+		}
+
+		then_branch := parse_cmdlist(p) or_return
+
+		if_cmd.then_branch = then_branch
+
+		return nil
+	}
+
+
 	advance_token(p)
 
 	if_clause := new(IfClause)
 
-	condition, err := parse_cmdlist(p)
-	if err != nil {
+	if err := parse_if(p, if_clause); err != nil {
 		return nil, err
 	}
 
-	skip_newlines(p)
+	curr_if := if_clause
 
-	if !match(p, []TokenKind{.THEN}) {
+	for match(p, []TokenKind{.ELIF}) {
+		elif_clause := new(IfClause)
+
+		if err := parse_if(p, elif_clause); err != nil {
+			return nil, err
+		}
+		curr_if.else_branch = elif_clause
+
+		curr_if = elif_clause
+	}
+
+	if match(p, []TokenKind{.ELSE}) {
+		skip_newlines(p)
+
+		else_body, err := parse_cmdlist(p)
+		if err != nil {
+			return nil, err
+		}
+
+		curr_if.else_branch = else_body
+	}
+
+	if !match(p, []TokenKind{.FI}) {
 		return nil, .Unexpected_Token
 	}
 
-	if_clause.then_branch, err = parse_cmdlist(p)
-	if err != nil {
-		return nil, err
-	}
-
-
-	return nil, nil
+	return if_clause, nil
 }
 
