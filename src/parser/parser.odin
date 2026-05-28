@@ -86,31 +86,28 @@ parse :: proc(p: ^Parser) -> (^Program, Error) {
 
 parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	left, err := parse_and_or(p)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil {return nil, err}
 
-	if p.curr_token.kind == .SEMICOLON {
-		operator_kind := p.curr_token.kind
+	for p.peek_token.kind == .SEMICOLON {
+		operator_kind := p.peek_token.kind
+
 		advance_token(p)
 
 		skip_newlines(p)
-
-		#partial switch p.curr_token.kind {
+		#partial switch p.peek_token.kind {
 		case .EOF, .RIGHTPAREN, .RIGHTBRACE, .FI, .THEN, .DONE, .ELIF, .ELSE:
 			return left, nil
 		}
 
+		advance_token(p)
+
 		right, err := parse_and_or(p)
-		if err != nil {
-			return left, err
-		}
+		if err != nil {return left, err}
 
 		cmdlist := new(CommandList)
 		cmdlist.left = left
 		cmdlist.operator = operator_kind
 		cmdlist.right = right
-
 		left = cmdlist
 	}
 
@@ -125,6 +122,8 @@ parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
 
 	for match(p, []TokenKind{.ORIF, .ANDIF}) {
 		operator := p.curr_token
+
+		advance_token(p) //move curr token beyond .orif .andif
 
 		right, err := parse_pipeline(p)
 		if err != nil {
@@ -157,7 +156,7 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 		return nil, err
 	}
 
-	if !bang && p.peek_token.kind == .PIPE {
+	if !bang && p.peek_token.kind != .PIPE {
 		return cmd, nil
 	}
 
@@ -168,6 +167,7 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 
 
 	for match(p, []TokenKind{.PIPE}) {
+		advance_token(p) //move curr_token beyond |
 		cmd, err = parse_cmd(p)
 		if err != nil {
 			return pipeline, err
