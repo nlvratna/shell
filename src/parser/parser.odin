@@ -186,6 +186,9 @@ parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
 	case .LEFTPAREN:
 		return parse_subshell_cmd(p)
 
+	case .LEFTBRACE:
+		return parse_bracecmd(p)
+
 	case .FOR:
 		return parse_for_cmd(p)
 
@@ -312,5 +315,20 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 	}
 
 	return if_clause, nil
+}
+
+parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, Error) {
+	advance_token(p)
+
+	b := new(BraceGroup)
+
+	body, err := parse_cmdlist(p)
+	if err != nil {
+		return nil, err
+	}
+	b.body = body
+
+	return b, nil
+
 }
 
