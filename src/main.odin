@@ -2,6 +2,7 @@ package shell
 
 import "core:bufio"
 import "core:fmt"
+import "core:io"
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
@@ -87,7 +88,18 @@ exec :: proc() {
 		p: parser.Parser
 		parser.parser_init(&p, data)
 
+		program, err := parser.parse(&p)
+
+		//may be have a write command from reader?
+		if err != nil {
+			fmt.println(err) //handle better
+		}
+
+		parser.print_ast(program)
+
+
 		free_all(context.temp_allocator)
 	}
 
 }
+

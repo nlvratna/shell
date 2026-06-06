@@ -1,5 +1,6 @@
 package parser
 
+import "core:strconv"
 
 Parser :: struct {
 	t:          Tokenizer,
@@ -200,8 +201,57 @@ parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
 }
 
 parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
-	//TODO
-	return nil, nil
+	cmd := new(SimpleCommand)
+
+	cmd.assigns = make([dynamic]string)
+	cmd.redirects = make([dynamic]Redirect)
+	cmd.words = make([dynamic]string)
+
+	loop: for {
+		#partial switch p.curr_token.kind {
+		case .WORD:
+			append(&cmd.words, p.curr_token.text)
+			advance_token(p)
+		case .ASSIGNMENT_WORD:
+			append(&cmd.assigns, p.curr_token.text)
+			advance_token(p)
+		case .LESS, .GREATER, .DGREAT, .IONUMBER:
+			fd := -1
+			if p.curr_token.kind == .IONUMBER {
+				fd, _ = strconv.parse_int(p.curr_token.text)
+				advance_token(p)
+			}
+
+			if p.curr_token.kind != .LESS &&
+			   p.curr_token.kind != .GREATER &&
+			   p.curr_token.kind != .DGREAT {
+				return nil, .Unexpected_Token
+			}
+
+			operator := p.curr_token.kind
+
+			if fd == -1 {
+				fd = 0 if operator == .LESS else 1
+			}
+			advance_token(p)
+
+			if p.curr_token.kind != .WORD {
+				return nil, .Unexpected_Token
+			}
+			redirect := Redirect {
+				kind = operator,
+				file = p.curr_token.text,
+				fd   = fd,
+			}
+
+			append(&cmd.redirects, redirect)
+			advance_token(p)
+		case:
+			break loop
+		}
+	}
+
+	return cmd, nil
 }
 
 parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, Error) {
@@ -327,6 +377,10 @@ parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, Error) {
 		return nil, err
 	}
 	b.body = body
+
+	if !match(p, []TokenKind{.RIGHTBRACE}) {
+		return nil, .Unexpected_Token
+	}
 
 	return b, nil
 
