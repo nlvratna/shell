@@ -93,6 +93,7 @@ exec :: proc() {
 		//may be have a write command from reader?
 		if err != nil {
 			fmt.println(err) //handle better
+			return
 		}
 
 		parser.print_ast(program)

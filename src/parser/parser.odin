@@ -1,5 +1,6 @@
 package parser
 
+import "core:fmt"
 import "core:strconv"
 
 Parser :: struct {
@@ -38,7 +39,7 @@ advance_token :: proc(p: ^Parser) {
 
 match_kind :: proc(p: ^Parser, kinds: []TokenKind) -> bool {
 	for kind in kinds {
-		if p.peek_token.kind == kind {
+		if p.curr_token.kind == kind {
 			advance_token(p)
 			return true
 		}
@@ -48,7 +49,7 @@ match_kind :: proc(p: ^Parser, kinds: []TokenKind) -> bool {
 
 match_text :: proc(p: ^Parser, texts: []string) -> bool {
 	for text in texts {
-		if p.peek_token.text == text {
+		if p.curr_token.text == text {
 			advance_token(p)
 			return true
 		}
@@ -62,7 +63,7 @@ match :: proc {
 }
 
 skip_newlines :: proc(p: ^Parser) {
-	for p.peek_token.kind == .NEWLINE {
+	for p.curr_token.kind == .NEWLINE {
 		advance_token(p)
 	}
 }
@@ -73,6 +74,7 @@ parse :: proc(p: ^Parser) -> (^Program, Error) {
 	cmds := make([dynamic]Command)
 
 	for p.curr_token.kind != .EOF {
+		fmt.printf("Curr token:%v , peek token :%v\n", p.curr_token, p.peek_token)
 		cmd, err := parse_cmdlist(p)
 		if err != nil {
 			return nil, err
@@ -89,8 +91,8 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	left, err := parse_and_or(p)
 	if err != nil {return nil, err}
 
-	for p.peek_token.kind == .SEMICOLON {
-		operator_kind := p.peek_token.kind
+	for p.curr_token.kind == .SEMICOLON {
+		operator_kind := p.curr_token.kind
 
 		advance_token(p)
 
@@ -100,10 +102,10 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 			return left, nil
 		}
 
-		advance_token(p)
-
 		right, err := parse_and_or(p)
-		if err != nil {return left, err}
+		if err != nil {
+			return left, err
+		}
 
 		cmdlist := new(CommandList)
 		cmdlist.left = left
@@ -121,25 +123,19 @@ parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
 		return nil, err
 	}
 
-	for match(p, []TokenKind{.ORIF, .ANDIF}) {
+	for p.curr_token.kind == .ORIF || p.curr_token.kind == .ANDIF {
 		operator := p.curr_token
-
-		advance_token(p) //move curr token beyond .orif .andif
+		advance_token(p)
 
 		right, err := parse_pipeline(p)
-		if err != nil {
-			return left, err
-		}
+		if err != nil {return left, err}
 
 		cmdlist := new(CommandList)
 		cmdlist.left = left
 		cmdlist.operator = operator.kind
 		cmdlist.right = right
-
 		left = cmdlist
-
 	}
-
 	return left, nil
 }
 
@@ -157,7 +153,7 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 		return nil, err
 	}
 
-	if !bang && p.peek_token.kind != .PIPE {
+	if !bang && p.curr_token.kind != .PIPE {
 		return cmd, nil
 	}
 
@@ -168,7 +164,6 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 
 
 	for match(p, []TokenKind{.PIPE}) {
-		advance_token(p) //move curr_token beyond |
 		cmd, err = parse_cmd(p)
 		if err != nil {
 			return pipeline, err
@@ -206,6 +201,8 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 	cmd.assigns = make([dynamic]string)
 	cmd.redirects = make([dynamic]Redirect)
 	cmd.words = make([dynamic]string)
+
+	fmt.printf("In parse simple command:%v\n", p.curr_token)
 
 	loop: for {
 		#partial switch p.curr_token.kind {
@@ -250,6 +247,9 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 			break loop
 		}
 	}
+	// if len(cmd.words) == 0 && len(cmd.assigns) == 0 && len(cmd.redirects) == 0 {
+	// 	return nil, .Unexpected_Token
+	// }
 
 	return cmd, nil
 }
@@ -271,23 +271,33 @@ parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, Error) {
 }
 
 parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
+	fmt.println("For loop parsing is called")
 	advance_token(p)
 
 	for_cmd := new(ForLoop)
-	if !match(p, []TokenKind{.WORD}) {
+
+	fmt.printf("Before parsing variable in for:%v\n", p.curr_token)
+	if p.curr_token.kind != .WORD {
 		return nil, .Unexpected_Token
 	}
 	for_cmd.variable = p.curr_token.text
+	advance_token(p)
 
 	if !match(p, []TokenKind{.IN}) {
 		return nil, .Unexpected_Token
 	}
 
-	for match(p, []TokenKind{.WORD}) {
+	for p.curr_token.kind == .WORD {
 		append(&for_cmd.items, p.curr_token.text)
+		advance_token(p)
+	}
+
+	skip_newlines(p)
+	if p.curr_token.kind == .SEMICOLON {
+		advance_token(p)
 	}
 	skip_newlines(p)
-	if !match(p, []TokenKind{.SEMICOLON, .DO}) {
+	if !match(p, []TokenKind{.DO}) {
 		return nil, .Unexpected_Token
 	}
 	skip_newlines(p)
@@ -307,6 +317,8 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 
 parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> Error {
+		fmt.printf("If command Token:%v\n", p.curr_token)
+
 
 		condition := parse_cmdlist(p) or_return
 		if_cmd.condition = condition
