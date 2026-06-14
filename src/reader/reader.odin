@@ -159,6 +159,14 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 	}
 
 
+	delete_from_buffer :: proc(r: ^ReaderState) {
+		if len(r.buffer) == 0 {
+			return
+		}
+		ordered_remove(&r.buffer, r.cursor_pos - 1)
+		r.cursor_pos -= 1
+	}
+
 	add_to_buffer :: proc(r: ^ReaderState, ch: rune) {
 		if r.cursor_pos == len(r.buffer) {
 			append(&r.buffer, ch)
@@ -166,15 +174,6 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			inject_at(&r.buffer, r.cursor_pos, ch)
 		}
 		r.cursor_pos += 1
-	}
-
-
-	delete_from_buffer :: proc(r: ^ReaderState) {
-		if len(r.buffer) == 0 {
-			return
-		}
-		ordered_remove(&r.buffer, r.cursor_pos - 1)
-		r.cursor_pos -= 1
 	}
 
 	delete_word :: proc(r: ^ReaderState) {
@@ -233,10 +232,6 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 
 		switch v in key {
 		case rune:
-			if v == 'q' {
-				disable_raw_mode()
-				os.exit(1) //for now //replace with exit later
-			}
 			add_to_buffer(r, v)
 			render(r, stream)
 		case Key:

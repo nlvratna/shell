@@ -1,6 +1,5 @@
 package parser
 
-import "core:fmt"
 import "core:strconv"
 
 Parser :: struct {
@@ -74,7 +73,6 @@ parse :: proc(p: ^Parser) -> (^Program, Error) {
 	cmds := make([dynamic]Command)
 
 	for p.curr_token.kind != .EOF {
-		fmt.printf("Curr token:%v , peek token :%v\n", p.curr_token, p.peek_token)
 		cmd, err := parse_cmdlist(p)
 		if err != nil {
 			return nil, err
@@ -202,8 +200,6 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 	cmd.redirects = make([dynamic]Redirect)
 	cmd.words = make([dynamic]string)
 
-	fmt.printf("In parse simple command:%v\n", p.curr_token)
-
 	loop: for {
 		#partial switch p.curr_token.kind {
 		case .WORD:
@@ -271,12 +267,10 @@ parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, Error) {
 }
 
 parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
-	fmt.println("For loop parsing is called")
 	advance_token(p)
 
 	for_cmd := new(ForLoop)
 
-	fmt.printf("Before parsing variable in for:%v\n", p.curr_token)
 	if p.curr_token.kind != .WORD {
 		return nil, .Unexpected_Token
 	}
@@ -317,7 +311,6 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 
 parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> Error {
-		fmt.printf("If command Token:%v\n", p.curr_token)
 
 
 		condition := parse_cmdlist(p) or_return
