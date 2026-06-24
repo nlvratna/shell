@@ -7,6 +7,7 @@ import "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
 import posix "core:sys/posix"
+import "execute"
 import "parser"
 import "reader"
 
@@ -95,9 +96,8 @@ exec :: proc() {
 			continue
 		}
 
-		parser.print_ast(program)
-
-
+		execute.execute(program)
+		//if I execute the program and it has error then the free_all temp allocator will not run so memory leak?
 		free_all(context.temp_allocator)
 	}
 
