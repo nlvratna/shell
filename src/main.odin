@@ -85,6 +85,9 @@ exec :: proc() {
 		data := reader.read_line(&r)
 		context.allocator = virtual.arena_allocator(&arena)
 
+		defer free_all(context.temp_allocator)
+		defer free_all(context.allocator)
+
 		p: parser.Parser
 		parser.parser_init(&p, data)
 
@@ -97,9 +100,6 @@ exec :: proc() {
 		}
 
 		execute.execute(program)
-		//if I execute the program and it has error then the free_all temp allocator will not run so memory leak?
-		free_all(context.temp_allocator)
 	}
-
 }
 

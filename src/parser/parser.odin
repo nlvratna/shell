@@ -1,6 +1,7 @@
 package parser
 
 import "core:strconv"
+import "core:strings"
 
 Parser :: struct {
 	t:          Tokenizer,
@@ -201,7 +202,16 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 	loop: for {
 		#partial switch p.curr_token.kind {
 		case .WORD:
-			append(&cmd.words, p.curr_token.text)
+			word := p.curr_token.text
+			if strings.has_prefix(word, "\"") && strings.has_suffix(word, "\"") {
+
+				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
+			}
+			if strings.has_prefix(word, "'") && strings.has_suffix(word, "'") {
+
+				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
+			}
+			append(&cmd.words, word)
 			advance_token(p)
 		case .ASSIGNMENT_WORD:
 			append(&cmd.assigns, p.curr_token.text)
@@ -236,6 +246,9 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 			}
 
 			append(&cmd.redirects, redirect)
+			advance_token(p)
+		case .AMPERSAND:
+			cmd.is_bg = true
 			advance_token(p)
 		case:
 			break loop

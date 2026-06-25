@@ -17,7 +17,17 @@ execute :: proc(program: parser.Program) {
 }
 
 
+@(private)
 exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
+	reset_signal :: proc() {
+		signals := []posix.Signal{.SIGINT, .SIGQUIT, .SIGTSTP, .SIGTTIN, .SIGTTOU}
+
+		for sig in signals {
+			posix.signal(sig, auto_cast posix.SIG_DFL)
+		}
+	}
+
+
 	shell_gpid := posix.getpgrp()
 
 	pid := posix.fork()
@@ -26,14 +36,12 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 		child_pid := posix.getpid()
 		posix.setpgid(0, 0)
 
-		posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
-		posix.tcsetpgrp(posix.STDIN_FILENO, child_pid)
+		if !cmd.is_bg {
+			posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
+			posix.tcsetpgrp(posix.STDIN_FILENO, child_pid)
+		}
 
-		posix.signal(.SIGINT, auto_cast posix.SIG_DFL)
-		posix.signal(.SIGQUIT, auto_cast posix.SIG_DFL)
-		posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
-		posix.signal(.SIGTTIN, auto_cast posix.SIG_DFL)
-		posix.signal(.SIGTTOU, auto_cast posix.SIG_DFL)
+		reset_signal()
 
 		for r in cmd.redirects {
 			file_path := strings.clone_to_cstring(r.file)
@@ -86,10 +94,15 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 			args[len(cmd.words)] = nil
 
 			posix.execvp(args[0], &args[0])
-			posix.perror("odin-shell: exec failed")
+			posix.perror("shell: exec failed")
 			posix.exit(127)
 		}
 	} else if pid > 0 {
+		if (cmd.is_bg) {
+			fmt.printf("[Background Job Started]PID:%d\n", pid)
+			return 0
+		}
+
 		posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
 		posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
 

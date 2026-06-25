@@ -13,6 +13,26 @@ test_lexer :: proc(t: ^testing.T) {
 
 	tests := []TestCase {
 		{
+			name = "Background job test",
+			input = "ls -lhR &",
+			expected = []Token {
+				{text = "ls", kind = .WORD},
+				{text = "-lhR", kind = .WORD},
+				{text = "&", kind = .AMPERSAND},
+				{text = "EOF", kind = .EOF},
+			},
+		},
+		{
+			name = "Background job test",
+			input = "ls -lhR&",
+			expected = []Token {
+				{text = "ls", kind = .WORD},
+				{text = "-lhR", kind = .WORD},
+				{text = "&", kind = .AMPERSAND},
+				{text = "EOF", kind = .EOF},
+			},
+		},
+		{
 			name = "Basic Command and Arguments",
 			input = "ls -la /var/log",
 			expected = []Token {

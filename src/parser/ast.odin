@@ -32,6 +32,7 @@ SimpleCommand :: struct {
 	assigns:   [dynamic]string,
 	words:     [dynamic]string,
 	redirects: [dynamic]Redirect,
+	is_bg:     bool,
 }
 
 Pipeline :: struct {
