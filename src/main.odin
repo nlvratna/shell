@@ -58,7 +58,6 @@ handle_file :: proc(file: ^os.File) {
 	scanner: bufio.Scanner
 	bufio.scanner_init(&scanner, os.to_stream(file))
 	defer bufio.scanner_destroy(&scanner)
-	defer free(&scanner)
 
 	// for bufio.scanner_scan(scanner) {
 	// 	// line := bufio.scanner_text(scanner)
