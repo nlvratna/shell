@@ -206,6 +206,12 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 		render(r, stream)
 	}
 
+	handle_ctrld :: proc(r: ^ReaderState) {
+		if len(r.buffer) == 0 {
+			os.exit(0)
+		}
+	}
+
 
 	move_left :: proc(r: ^ReaderState) {
 		if r.cursor_pos == 0 {
@@ -238,6 +244,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			#partial switch v {
 			case .Ctrl_C:
 				handle_ctrlc(r, stream)
+			case .Ctrl_D:
+				handle_ctrld(r)
 			case .Ctrl_L:
 				io.write_string(stream, CursorControl[.ClearScreen])
 				io.write_string(stream, CursorControl[.Home])
