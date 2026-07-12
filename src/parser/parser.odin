@@ -86,7 +86,9 @@ parse :: proc(p: ^Parser) -> (Program, Error) {
 
 parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 	left, err := parse_and_or(p)
-	if err != nil {return nil, err}
+	if err != nil {
+		return nil, err
+	}
 
 	for p.curr_token.kind == .SEMICOLON {
 		operator_kind := p.curr_token.kind
@@ -125,7 +127,9 @@ parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
 		advance_token(p)
 
 		right, err := parse_pipeline(p)
-		if err != nil {return left, err}
+		if err != nil {
+			return left, err
+		}
 
 		cmdlist := new(CommandList)
 		cmdlist.left = left
@@ -187,6 +191,8 @@ parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
 
 	case .IF:
 		return parse_if_cmd(p)
+	case .INVALID:
+		return nil, .Unexpected_Token
 	case:
 		return parse_simple_cmd(p)
 	}
