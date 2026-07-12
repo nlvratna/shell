@@ -17,7 +17,7 @@ tokenizer_init :: proc(t: ^Tokenizer, data: string) {
 		data   = data,
 	}
 	next_rune(t)
-	if t.ch == utf8.RUNE_EOF {next_rune(t)}
+	if t.ch == utf8.RUNE_EOF do next_rune(t)
 }
 
 next_rune :: proc(t: ^Tokenizer) -> rune {
@@ -55,7 +55,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 	is_all_digits :: proc(s: string) -> bool {
 		if len(s) == 0 {return false}
 		for r in s {
-			if !unicode.is_digit(r) {return false}
+			if !unicode.is_digit(r) do return false
 		}
 		return true
 	}
