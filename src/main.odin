@@ -77,7 +77,7 @@ exec :: proc() {
 	r: reader.ReaderState
 
 	reader.reader_init(&r, "$ ")
-	defer reader.reader_fini(&r)
+	defer reader.reader_destroy(&r)
 
 
 	for {

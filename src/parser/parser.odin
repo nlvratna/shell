@@ -24,6 +24,7 @@ parser_init :: proc(p: ^Parser, data: string) {
 		t = t,
 	}
 
+	//setup both current token and peek token
 	advance_token(p)
 	advance_token(p)
 
@@ -33,7 +34,6 @@ parser_init :: proc(p: ^Parser, data: string) {
 advance_token :: proc(p: ^Parser) {
 	p.curr_token = p.peek_token
 	p.peek_token = get_token(&p.t)
-
 }
 
 
@@ -143,7 +143,6 @@ parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
 parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 
 	bang: bool
-
 	if p.curr_token.kind == .BANG {
 		bang = true
 		advance_token(p)

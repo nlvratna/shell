@@ -118,7 +118,7 @@ reader_init :: proc(r: ^ReaderState, prompt: string) -> ^ReaderState {
 	return r
 }
 
-reader_fini :: proc(r: ^ReaderState) {
+reader_destroy :: proc(r: ^ReaderState) {
 	delete(r.buffer)
 	free(r)
 }
@@ -130,12 +130,11 @@ read_line :: proc(r: ^ReaderState) -> string {
 	read(r, stream)
 
 	return utf8.runes_to_string(r.buffer[:], context.temp_allocator)
-
 }
 
 @(private)
 read :: proc(r: ^ReaderState, stream: io.Stream) {
-	render :: proc(r: ^ReaderState, stream: io.Stream) {
+	print :: proc(r: ^ReaderState, stream: io.Stream) {
 
 		sb: strings.Builder
 		strings.builder_init(&sb, context.temp_allocator)
@@ -153,11 +152,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 		cursor_col := r.prompt_len + r.cursor_pos + 1
 		fmt.sbprintf(&sb, "%s%dG", CSI, cursor_col)
 
-		io.write(stream, sb.buf[:])
-
-
+		render(sb.buf[:], stream)
 	}
-
 
 	delete_from_buffer :: proc(r: ^ReaderState) {
 		if len(r.buffer) == 0 {
@@ -198,12 +194,12 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 
 	handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
 
-		io.write_string(stream, "\r\n")
+		render("\r\n", stream)
 
 		clear(&r.buffer)
 		r.cursor_pos = 0
 
-		render(r, stream)
+		print(r, stream)
 	}
 
 	handle_ctrld :: proc(r: ^ReaderState) {
@@ -232,14 +228,14 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 	}
 
 
-	render(r, stream)
+	print(r, stream)
 	for {
 		key := read_key(stream)
 
 		switch v in key {
 		case rune:
 			add_to_buffer(r, v)
-			render(r, stream)
+			print(r, stream)
 		case Key:
 			#partial switch v {
 			case .Ctrl_C:
@@ -247,28 +243,28 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			case .Ctrl_D:
 				handle_ctrld(r)
 			case .Ctrl_L:
-				io.write_string(stream, CursorControl[.ClearScreen])
-				io.write_string(stream, CursorControl[.Home])
+				render(CursorControl[.ClearScreen], stream)
+				render(CursorControl[.Home], stream)
 
-				render(r, stream)
+				print(r, stream)
 			case .Enter:
-				io.write_string(stream, "\n")
+				render("\n", stream)
 				return
 			case .BackSpace:
 				delete_from_buffer(r)
-				render(r, stream)
+				print(r, stream)
 			case .Tab:
 			//how to handle this?
 			//TODO:add searching for binaries and show them?
 			case .Ctrl_W:
 				delete_word(r)
-				render(r, stream)
+				print(r, stream)
 			case .Left_Arrow:
 				move_left(r)
-				render(r, stream)
+				print(r, stream)
 			case .Right_Arrow:
 				move_right(r)
-				render(r, stream)
+				print(r, stream)
 			// case .Up_Arrow:
 			// //history up                //TODO:Add histories
 			// case .Down_Arrow:

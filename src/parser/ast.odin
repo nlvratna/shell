@@ -100,7 +100,6 @@ print_indent :: proc(level: int) {
 	}
 }
 
-// The master entry point
 print_ast :: proc(prog: ^Program) {
 	fmt.println("=== ABSTRACT SYNTAX TREE ===")
 	for cmd in prog.cmds {
@@ -109,9 +108,10 @@ print_ast :: proc(prog: ^Program) {
 	}
 }
 
-// The recursive tree walker
 print_command :: proc(cmd: Command, level: int) {
-	if cmd == nil {return}
+	if cmd == nil {
+		return
+	}
 
 	print_indent(level)
 

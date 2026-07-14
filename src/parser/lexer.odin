@@ -47,7 +47,11 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 		for t.ch != utf8.RUNE_EOF && t.ch != quote {
 			next_rune(t)
 		}
-		if t.ch == utf8.RUNE_EOF {return false}
+
+		if t.ch == utf8.RUNE_EOF {
+			return false
+		}
+
 		next_rune(t)
 		return true
 	}
@@ -81,14 +85,14 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 
 	is_assignment_word :: proc(text: string) -> bool {
 		id := strings.index_rune(text, '=')
-		if id <= 0 {return false}
+		if id <= 0 do return false
 
 		for i in 0 ..< id {
 			c := rune(text[i])
 			if i == 0 {
-				if !unicode.is_alpha(c) && c != '_' {return false}
+				if !unicode.is_alpha(c) && c != '_' do return false
 			} else {
-				if !unicode.is_alpha(c) && !unicode.is_digit(c) && c != '_' {return false}
+				if !unicode.is_alpha(c) && !unicode.is_digit(c) && c != '_' do return false
 			}
 		}
 		return true
@@ -176,7 +180,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 			if t.ch == '\'' {
 				next_rune(t)
 				if !consume_quote(t, '\'') {
-					return new_token("Unclosed double quote", .INVALID)
+					return new_token("Unclosed single quote", .INVALID)
 				}
 			} else if t.ch == '"' {
 				next_rune(t)
