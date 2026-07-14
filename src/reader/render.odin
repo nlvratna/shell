@@ -1,5 +1,6 @@
 package reader
 
+import "core:fmt"
 import "core:io"
 
 
@@ -21,6 +22,7 @@ render_bytes :: proc(data: []byte, stream: io.Stream) {
 }
 
 render_error :: proc(msg: string, stream: io.Stream) {
-	render_string(msg, stream)
+	err := fmt.tprintf("%s %s0m\r\n", msg, CSI)
+	render_string(err, stream)
 }
 
