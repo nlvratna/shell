@@ -134,7 +134,7 @@ read_line :: proc(r: ^ReaderState) -> string {
 
 @(private)
 read :: proc(r: ^ReaderState, stream: io.Stream) {
-	print :: proc(r: ^ReaderState, stream: io.Stream) {
+	print :: proc(r: ^ReaderState) {
 
 		sb: strings.Builder
 		strings.builder_init(&sb, context.temp_allocator)
@@ -152,7 +152,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 		cursor_col := r.prompt_len + r.cursor_pos + 1
 		fmt.sbprintf(&sb, "%s%dG", CSI, cursor_col)
 
-		render(sb.buf[:], stream)
+		render(sb.buf[:])
 	}
 
 	delete_from_buffer :: proc(r: ^ReaderState) {
@@ -194,12 +194,12 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 
 	handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
 
-		render("\r\n", stream)
+		render("\r\n")
 
 		clear(&r.buffer)
 		r.cursor_pos = 0
 
-		print(r, stream)
+		print(r)
 	}
 
 	handle_ctrld :: proc(r: ^ReaderState) {
@@ -228,14 +228,14 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 	}
 
 
-	print(r, stream)
+	print(r)
 	for {
 		key := read_key(stream)
 
 		switch v in key {
 		case rune:
 			add_to_buffer(r, v)
-			print(r, stream)
+			print(r)
 		case Key:
 			#partial switch v {
 			case .Ctrl_C:
@@ -243,28 +243,28 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			case .Ctrl_D:
 				handle_ctrld(r)
 			case .Ctrl_L:
-				render(CursorControl[.ClearScreen], stream)
-				render(CursorControl[.Home], stream)
+				render(CursorControl[.ClearScreen])
+				render(CursorControl[.Home])
 
-				print(r, stream)
+				print(r)
 			case .Enter:
-				render("\n", stream)
+				render("\n")
 				return
 			case .BackSpace:
 				delete_from_buffer(r)
-				print(r, stream)
+				print(r)
 			case .Tab:
 			//how to handle this?
 			//TODO:add searching for binaries and show them?
 			case .Ctrl_W:
 				delete_word(r)
-				print(r, stream)
+				print(r)
 			case .Left_Arrow:
 				move_left(r)
-				print(r, stream)
+				print(r)
 			case .Right_Arrow:
 				move_right(r)
-				print(r, stream)
+				print(r)
 			// case .Up_Arrow:
 			// //history up                //TODO:Add histories
 			// case .Down_Arrow:

@@ -92,9 +92,9 @@ exec :: proc() {
 
 		program, err := parser.parse(&p)
 
-		//may be have a write command from reader?
 		if err != nil {
-			fmt.eprintln(err) //handle better
+			err_msg := fmt.tprintf("The error:%v", err) //todo:this will be changed
+			reader.render_error(err_msg)
 			continue
 		}
 
