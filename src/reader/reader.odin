@@ -123,9 +123,13 @@ reader_destroy :: proc(r: ^ReaderState) {
 	free(r)
 }
 
-read_line :: proc(r: ^ReaderState) -> string {
+@(private = "file")
+clear_buf :: proc(r: ^ReaderState) {
 	clear(&r.buffer)
 	r.cursor_pos = 0
+}
+
+read_line :: proc(r: ^ReaderState) -> string {
 	stream := os.to_stream(os.stdin)
 	read(r, stream)
 
@@ -193,12 +197,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 
 
 	handle_ctrlc :: proc(r: ^ReaderState, stream: io.Stream) {
-
 		render("\r\n")
-
-		clear(&r.buffer)
-		r.cursor_pos = 0
-
+		clear_buf(r)
 		print(r)
 	}
 

@@ -209,11 +209,9 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 		case .WORD:
 			word := p.curr_token.text
 			if strings.has_prefix(word, "\"") && strings.has_suffix(word, "\"") {
-
 				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
 			}
 			if strings.has_prefix(word, "'") && strings.has_suffix(word, "'") {
-
 				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
 			}
 			append(&cmd.words, word)
