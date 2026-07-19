@@ -228,6 +228,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 	}
 
 
+	clear_buf(r)
 	print(r)
 	for {
 		key := read_key(stream)
