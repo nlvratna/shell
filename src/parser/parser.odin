@@ -72,11 +72,14 @@ skip_newlines :: proc(p: ^Parser) {
 parse :: proc(p: ^Parser) -> (Program, Error) {
 	cmds := make([dynamic]Command)
 
+	skip_newlines(p)
+
 	for p.curr_token.kind != .EOF {
 		cmd, err := parse_cmdlist(p)
 		if err != nil {
 			return Program{}, err
 		}
+		skip_newlines(p)
 		append(&cmds, cmd)
 	}
 
