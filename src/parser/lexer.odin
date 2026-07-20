@@ -12,21 +12,28 @@ Tokenizer :: struct {
 }
 
 tokenizer_init :: proc(t: ^Tokenizer, data: string) {
+
 	t^ = Tokenizer {
 		offset = 0,
 		data   = data,
 	}
+
 	next_rune(t)
-	if t.ch == utf8.RUNE_EOF do next_rune(t)
+
+	if t.ch == utf8.RUNE_EOF {
+		next_rune(t)
+	}
 }
 
 next_rune :: proc(t: ^Tokenizer) -> rune {
 	if t.offset < len(t.data) {
 		t.offset += t.w
 		t.ch, t.w = utf8.decode_rune_in_string(t.data[t.offset:])
+		//
 	}
 
 	if t.offset >= len(t.data) {
+
 		t.ch = utf8.RUNE_EOF
 		t.w = 1
 	}
@@ -103,13 +110,14 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 		next_rune(t)
 	}
 
-	if t.ch == utf8.RUNE_EOF {
-		return new_token("EOF", .EOF)
-	}
+	// if t.ch == utf8.RUNE_EOF {
+	// 	return new_token("EOF", .EOF)
+	//    }
 
 
 	start_pos := t.offset
 	ch := t.ch
+
 	next_rune(t)
 
 	kind: TokenKind
@@ -160,6 +168,8 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 		} else {
 			kind = .LESS
 		}
+	case utf8.RUNE_EOF, '\x00':
+		kind = .EOF
 	case:
 		//everything else is a string in a shell
 		if ch == '\'' {
@@ -174,6 +184,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 
 		for t.ch != utf8.RUNE_EOF {
 			if t.ch == ' ' || t.ch == '\t' || t.ch == '\n' || is_shell_operator(t.ch) {
+
 				break
 			}
 
@@ -194,6 +205,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 
 		text := t.data[start_pos:t.offset]
 
+
 		if is_all_digits(text) {
 			if t.ch == '<' || t.ch == '>' {
 				kind = .IONUMBER
@@ -209,6 +221,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 	}
 
 	text := t.data[start_pos:t.offset]
+
 	return new_token(text, kind)
 }
 
