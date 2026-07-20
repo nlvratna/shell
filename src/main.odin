@@ -1,15 +1,10 @@
 package shell
 
-import "core:bufio"
 import "core:fmt"
 import "core:mem"
-import "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
 import posix "core:sys/posix"
-import "execute"
-import "parser"
-import "reader"
 
 
 main :: proc() {
@@ -28,77 +23,32 @@ main :: proc() {
 			mem.tracking_allocator_destroy(&track)
 		}
 	}
+
+	s: ShellState
+	shell_state_init(&s)
+	defer shell_state_destroy(&s)
+
+
 	if len(os.args) >= 2 {
 		file_name := os.args[1]
+		s.is_interactive = false
 
 		filepath, err := filepath.abs(file_name)
 		if err != nil {
 			fmt.eprintln(err)
 		}
 
-		file, error := os.open(filepath, {.Read})
-		if error != nil {
-			fmt.eprintln(err) //can do better?
-		}
-		defer os.close(file)
-		handle_file(file)
+		byte_data, read_err := os.read_entire_file_from_path(filepath, context.allocator)
+		data := string(byte_data[:])
+		run(&s, data)
+	} else {
+		s.is_interactive = auto_cast posix.isatty(posix.STDIN_FILENO)
+		enable_raw(&s)
+		defer disable_raw(&s)
+
+		run(&s)
 	}
 
-	if !posix.isatty(posix.STDIN_FILENO) {
-		handle_file(os.stdin)
-	}
 
-	reader.enable_raw_mode()
-	defer reader.disable_raw_mode()
-
-	exec()
-}
-
-handle_file :: proc(file: ^os.File) {
-	scanner: bufio.Scanner
-	bufio.scanner_init(&scanner, os.to_stream(file))
-	defer bufio.scanner_destroy(&scanner)
-
-	// for bufio.scanner_scan(scanner) {
-	// 	// line := bufio.scanner_text(scanner)
-	// }
-
-
-}
-
-exec :: proc() {
-	arena: virtual.Arena
-	if err := virtual.arena_init_growing(&arena); err != nil {
-		panic("Couldn't allocate memory")
-	}
-
-	defer virtual.arena_destroy(&arena)
-
-	r: reader.ReaderState
-
-	reader.reader_init(&r, "$ ")
-	defer reader.reader_destroy(&r)
-
-
-	for {
-		data := reader.read_line(&r)
-		context.allocator = virtual.arena_allocator(&arena)
-
-		defer free_all(context.temp_allocator)
-		defer free_all(context.allocator)
-
-		p: parser.Parser
-		parser.parser_init(&p, data)
-
-		program, err := parser.parse(&p)
-
-		if err != nil {
-			err_msg := fmt.tprintf("The error:%v", err) //todo:this will be changed
-			reader.render_error(err_msg)
-			continue
-		}
-
-		execute.execute(program)
-	}
 }
 
