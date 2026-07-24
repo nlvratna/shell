@@ -48,6 +48,8 @@ run_interactive :: proc() {
 	reader.reader_init(&r, s.prompt)
 
 	for {
+		execute.reap_bg_processes(&s)
+
 		data := reader.read_line(&r)
 
 		context.allocator = virtual.arena_allocator(&s.arena)
@@ -63,6 +65,7 @@ run_interactive :: proc() {
 			reader.render_error(err_msg)
 		}
 		execute.execute(program, &s)
+
 	}
 }
 

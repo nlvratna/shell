@@ -12,7 +12,7 @@ execute :: proc(program: parser.Program, s: ^state.ShellState) {
 	for cmd in program.cmds {
 		#partial switch _ in cmd {
 		case ^parser.SimpleCommand:
-			exec_cmd(cmd.(^parser.SimpleCommand), s)
+			s.last_cmd_status = exec_cmd(cmd.(^parser.SimpleCommand), s)
 		}
 	}
 }
@@ -105,7 +105,8 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 		defer state.enable_raw(s)
 
 		if (cmd.is_bg) {
-			fmt.printf("[Background Job Started]PID:%d\n", pid)
+			s.bg_processes[len(s.bg_processes)] = pid
+			fmt.printf("[%d]PID:%d\n", len(s.bg_processes), pid) //send this up
 			return 0
 		}
 
@@ -131,7 +132,7 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 		case posix.WIFSIGNALED(status):
 			return 128 + int(posix.WTERMSIG(status))
 		case posix.WIFSTOPPED(status):
-			fmt.printf("\n[Job %d suspended]\n", pid)
+			fmt.printf("\n[Job %d suspended]\n", pid) //store this to bring this back
 			return 128 + int(posix.WSTOPSIG(status))
 		case:
 			return 1
@@ -140,5 +141,32 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 	// fmt.println("enabling raw mode")
 	posix.perror("shell:fork failed")
 	return 1
+}
+
+//use sigaction and register a sigchild handler for this
+reap_bg_processes :: proc(s: ^state.ShellState) {
+	status: c.int
+	found: bool
+	completed_id: int
+
+	for {
+		wait_pid := posix.waitpid(-1, &status, {.NOHANG})
+		if wait_pid <= 0 do break
+
+		if posix.WIFEXITED(status) || posix.WIFSIGNALED(status) {
+			for id, pid in s.bg_processes {
+				if pid == wait_pid {
+					completed_id = id
+					found = true
+					break
+				}
+			}
+
+			if found {
+				fmt.printf("[%d]-done\n", (completed_id + 1))
+				delete_key(&s.bg_processes, completed_id)
+			}
+		}
+	}
 }
 

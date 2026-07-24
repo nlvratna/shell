@@ -22,6 +22,8 @@ ShellState :: struct {
 	cwd:              string,
 	old_wd:           string,
 	using term_state: TermState,
+	last_cmd_status:  int,
+	bg_processes:     map[int]posix.pid_t,
 	prompt:           string,
 }
 
@@ -39,6 +41,7 @@ shell_state_init :: proc(s: ^ShellState) {
 		s.cwd = cd
 	}
 
+	s.bg_processes = make(map[int]posix.pid_t)
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
 	s.builtins = make(map[string]BuiltinProc)
