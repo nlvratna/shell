@@ -204,7 +204,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 
 	handle_ctrld :: proc(r: ^ReaderState) {
 		if len(r.buffer) == 0 {
-			os.exit(0)
+			os.exit(0) //who disables raw mode idiot -- TODO
 		}
 	}
 

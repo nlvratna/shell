@@ -1,24 +1,25 @@
 package execute
 
 import "../parser"
+import "../state"
 import "core:c"
 import "core:fmt"
 import "core:strings"
 import posix "core:sys/posix"
 
 
-execute :: proc(program: parser.Program) {
+execute :: proc(program: parser.Program, s: ^state.ShellState) {
 	for cmd in program.cmds {
 		#partial switch _ in cmd {
 		case ^parser.SimpleCommand:
-			exec_cmd(cmd.(^parser.SimpleCommand))
+			exec_cmd(cmd.(^parser.SimpleCommand), s)
 		}
 	}
 }
 
 
 @(private)
-exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
+exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 	reset_signal :: proc() {
 		signals := []posix.Signal{.SIGINT, .SIGQUIT, .SIGTSTP, .SIGTTIN, .SIGTTOU}
 
@@ -27,9 +28,10 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 		}
 	}
 
+	// fmt.println("disabling raw mode")
+	state.disable_raw(s)
 
 	shell_gpid := posix.getpgrp()
-
 	pid := posix.fork()
 
 	if pid == 0 {
@@ -37,11 +39,12 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 		posix.setpgid(0, 0)
 
 		if !cmd.is_bg {
+			//TODO:handle the zombie process
 			posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
 			posix.tcsetpgrp(posix.STDIN_FILENO, child_pid)
 		}
 
-		reset_signal()
+		reset_signal() //reset the signal for the child process
 
 		for r in cmd.redirects {
 			file_path := strings.clone_to_cstring(r.file)
@@ -63,7 +66,7 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 			defer posix.close(file_fd)
 
 			if file_fd < 0 {
-				posix.perror("shell:redirection error failed")
+				posix.perror("shell:redirection error failed") //sends events accordignly to handle don't exit here
 				posix.exit(1)
 			}
 
@@ -72,6 +75,7 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 				posix.exit(1)
 			}
 		}
+
 		for assign in cmd.assigns {
 			idx := strings.index_byte(assign, '=')
 			if idx == -1 do continue
@@ -94,23 +98,33 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 			args[len(cmd.words)] = nil
 
 			posix.execvp(args[0], &args[0])
-			posix.perror("shell: exec failed")
+			posix.perror("shell: exec failed") //same do
 			posix.exit(127)
 		}
 	} else if pid > 0 {
+		defer state.enable_raw(s)
+
 		if (cmd.is_bg) {
 			fmt.printf("[Background Job Started]PID:%d\n", pid)
 			return 0
 		}
 
+		posix.setpgid(pid, pid)
+
+		//Ignore terminal input and output so shell can take back the control
 		posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
 		posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
 
+		posix.tcsetpgrp(posix.STDIN_FILENO, pid) //handle the terminal to child
+
 		status: c.int
+		// fmt.println("called waitpid")
+
 		posix.waitpid(pid, &status, {.UNTRACED, .CONTINUED})
 
 		posix.tcsetpgrp(posix.STDIN_FILENO, shell_gpid)
 
+		// fmt.println("enabling raw mode")
 		switch {
 		case posix.WIFEXITED(status):
 			return int(posix.WEXITSTATUS(status))
@@ -118,12 +132,12 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand) -> int {
 			return 128 + int(posix.WTERMSIG(status))
 		case posix.WIFSTOPPED(status):
 			fmt.printf("\n[Job %d suspended]\n", pid)
-			return 148
+			return 128 + int(posix.WSTOPSIG(status))
 		case:
 			return 1
 		}
 	}
-
+	// fmt.println("enabling raw mode")
 	posix.perror("shell:fork failed")
 	return 1
 }

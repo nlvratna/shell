@@ -1,10 +1,10 @@
-package shell
+package main
 
 import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
-import posix "core:sys/posix"
+import "shell"
 
 
 main :: proc() {
@@ -24,31 +24,26 @@ main :: proc() {
 		}
 	}
 
-	s: ShellState
-	shell_state_init(&s)
-	defer shell_state_destroy(&s)
+	shell.init_shell()
+	defer shell.destroy_shell()
 
 
 	if len(os.args) >= 2 {
 		file_name := os.args[1]
-		s.is_interactive = false
 
 		filepath, err := filepath.abs(file_name)
 		if err != nil {
 			fmt.eprintln(err)
 		}
-
 		byte_data, read_err := os.read_entire_file_from_path(filepath, context.allocator)
+		defer delete(byte_data)
+
 		data := string(byte_data[:])
-		run(&s, data)
+
+		shell.run_not_interactive(data)
 	} else {
-		s.is_interactive = auto_cast posix.isatty(posix.STDIN_FILENO)
-		enable_raw(&s)
-		defer disable_raw(&s)
-
-		run(&s)
+		shell.run_interactive()
 	}
-
 
 }
 
