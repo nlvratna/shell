@@ -7,8 +7,9 @@ setup_and_parse :: proc(t: ^testing.T, input: string) -> ^SimpleCommand {
 	p: Parser
 	parser_init(&p, input)
 
-	program, err := parse(&p)
-	testing.expect_value(t, err, nil)
+	parser_event := parse(&p)
+	program := parser_event.program
+	testing.expect_value(t, parser_event.parse_err, "")
 	testing.expect_value(t, len(program.cmds), 1)
 
 	cmd, ok := program.cmds[0].(^SimpleCommand)

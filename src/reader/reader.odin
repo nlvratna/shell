@@ -16,6 +16,12 @@ Cursor :: enum {
 	Home,
 }
 
+CursorControl :: [Cursor]string {
+	.ClearScreen = CSI + "2J",
+	.ClearLine   = CSI + "2K",
+	.Home        = CSI + "H",
+}
+
 Key :: enum {
 	Ctrl_A,
 	Ctrl_C,
@@ -39,16 +45,36 @@ Key :: enum {
 	Unknown,
 }
 
+ReadError :: struct {
+	msg: string,
+}
+
 Input :: union {
 	rune,
 	Key,
+	ReadError,
 }
 
+InputEventType :: enum {
+	Line_Ready,
+	Read_Error,
+	Sigchld,
+	Sigwhich,
+}
+
+InputEvent :: struct {
+	type: InputEventType,
+	data: string,
+	err:  string,
+}
 
 //error handling
 read_key :: proc(stream: io.Stream) -> Input {
-
 	ch, sz, err := io.read_rune(stream)
+	if err != nil {
+		err_msg := fmt.tprintf("Read error:%v", err)
+		return ReadError{msg = err_msg}
+	}
 
 	switch ch {
 	case 1:
@@ -94,13 +120,6 @@ read_key :: proc(stream: io.Stream) -> Input {
 }
 
 
-CursorControl :: [Cursor]string {
-	.ClearScreen = CSI + "2J",
-	.ClearLine   = CSI + "2K",
-	.Home        = CSI + "H",
-}
-
-
 ReaderState :: struct {
 	buffer:     [dynamic]rune,
 	cursor_pos: int,
@@ -123,21 +142,29 @@ reader_destroy :: proc(r: ^ReaderState) {
 	free(r)
 }
 
-@(private = "file")
 clear_buf :: proc(r: ^ReaderState) {
 	clear(&r.buffer)
 	r.cursor_pos = 0
 }
 
-read_line :: proc(r: ^ReaderState) -> string {
+read_line :: proc(r: ^ReaderState) -> InputEvent {
 	stream := os.to_stream(os.stdin)
-	read(r, stream)
+	type := read(r, stream)
 
-	return utf8.runes_to_string(r.buffer[:], context.temp_allocator)
+	data := utf8.runes_to_string(r.buffer[:], context.temp_allocator)
+
+	if type == .Read_Error {
+		return InputEvent{err = data, type = type}
+	} else if type == .Line_Ready {
+		return InputEvent{data = data, type = type}
+	}
+	return InputEvent{type = type}
+
 }
 
 @(private)
-read :: proc(r: ^ReaderState, stream: io.Stream) {
+read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
+
 	print :: proc(r: ^ReaderState) {
 
 		sb: strings.Builder
@@ -174,6 +201,12 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			inject_at(&r.buffer, r.cursor_pos, ch)
 		}
 		r.cursor_pos += 1
+	}
+
+	add_string :: proc(r: ^ReaderState, data: string) {
+		for ch in data {
+			add_to_buffer(r, ch)
+		}
 	}
 
 	delete_word :: proc(r: ^ReaderState) {
@@ -228,12 +261,15 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 	}
 
 
-	clear_buf(r)
+	// clear_buf(r)
 	print(r)
 	for {
 		key := read_key(stream)
 
 		switch v in key {
+		case ReadError:
+			add_string(r, v.msg)
+			return .Read_Error
 		case rune:
 			add_to_buffer(r, v)
 			print(r)
@@ -246,11 +282,10 @@ read :: proc(r: ^ReaderState, stream: io.Stream) {
 			case .Ctrl_L:
 				render(CursorControl[.ClearScreen])
 				render(CursorControl[.Home])
-
 				print(r)
 			case .Enter:
 				render("\n")
-				return
+				return .Line_Ready
 			case .BackSpace:
 				delete_from_buffer(r)
 				print(r)

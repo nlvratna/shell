@@ -1,5 +1,6 @@
 package parser
 
+import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
@@ -9,10 +10,27 @@ Parser :: struct {
 	peek_token: Token,
 }
 
-Error :: enum {
+ErrorType :: enum {
 	None,
 	Unexpected_Token,
 	Unclosed_Quote,
+}
+
+ParseError :: struct {
+	err_type: ErrorType,
+	msg:      string,
+}
+
+ParseEventType :: enum {
+	Ast_Ready,
+	ErrorType,
+}
+
+
+ParserEvent :: struct {
+	parse_event_type: ParseEventType,
+	program:          Program,
+	parse_err:        string,
 }
 
 
@@ -69,27 +87,31 @@ skip_newlines :: proc(p: ^Parser) {
 }
 
 
-parse :: proc(p: ^Parser) -> (Program, Error) {
+//TODO : remove some code duplication
+parse :: proc(p: ^Parser) -> ParserEvent {
 	cmds := make([dynamic]Command)
 
 	skip_newlines(p)
 
 	for p.curr_token.kind != .EOF {
 		cmd, err := parse_cmdlist(p)
-		if err != nil {
-			return Program{}, err
+		if err.err_type != .None {
+			return ParserEvent{parse_err = err.msg, parse_event_type = .ErrorType}
 		}
 		skip_newlines(p)
 		append(&cmds, cmd)
 	}
 
-	return Program{cmds = cmds}, nil
+	p := Program {
+		cmds = cmds,
+	}
+	return ParserEvent{parse_event_type = .Ast_Ready, program = p}
 }
 
 
-parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
+parse_cmdlist :: proc(p: ^Parser) -> (Command, ParseError) {
 	left, err := parse_and_or(p)
-	if err != nil {
+	if err.err_type != .None {
 		return nil, err
 	}
 
@@ -101,11 +123,11 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 		skip_newlines(p)
 		#partial switch p.peek_token.kind {
 		case .EOF, .RIGHTPAREN, .RIGHTBRACE, .FI, .THEN, .DONE, .ELIF, .ELSE:
-			return left, nil
+			return left, ParseError{err_type = .None}
 		}
 
 		right, err := parse_and_or(p)
-		if err != nil {
+		if err.err_type != .None {
 			return left, err
 		}
 
@@ -116,12 +138,12 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, Error) {
 		left = cmdlist
 	}
 
-	return left, nil
+	return left, ParseError{err_type = .None}
 }
 
-parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
+parse_and_or :: proc(p: ^Parser) -> (Command, ParseError) {
 	left, err := parse_pipeline(p)
-	if err != nil {
+	if err.err_type != .None {
 		return nil, err
 	}
 
@@ -130,8 +152,8 @@ parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
 		advance_token(p)
 
 		right, err := parse_pipeline(p)
-		if err != nil {
-			return left, err
+		if err.err_type != .None {
+			return nil, err
 		}
 
 		cmdlist := new(CommandList)
@@ -140,10 +162,10 @@ parse_and_or :: proc(p: ^Parser) -> (Command, Error) {
 		cmdlist.right = right
 		left = cmdlist
 	}
-	return left, nil
+	return left, ParseError{err_type = .None}
 }
 
-parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
+parse_pipeline :: proc(p: ^Parser) -> (Command, ParseError) {
 
 	bang: bool
 	if p.curr_token.kind == .BANG {
@@ -152,12 +174,12 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 	}
 
 	cmd, err := parse_cmd(p)
-	if err != nil {
+	if err.err_type != .None {
 		return nil, err
 	}
 
 	if !bang && p.curr_token.kind != .PIPE {
-		return cmd, nil
+		return cmd, ParseError{err_type = .None}
 	}
 
 	pipeline := new(Pipeline)
@@ -168,18 +190,18 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, Error) {
 
 	for match(p, []TokenKind{.PIPE}) {
 		cmd, err = parse_cmd(p)
-		if err != nil {
+		if err.err_type != .None {
 			return pipeline, err
 		}
 		append(&pipeline.commands, cmd)
 	}
 
-	return pipeline, nil
+	return pipeline, ParseError{err_type = .None}
 
 }
 
 
-parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
+parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 	#partial switch p.curr_token.kind {
 
 	case .LEFTPAREN:
@@ -194,13 +216,14 @@ parse_cmd :: proc(p: ^Parser) -> (Command, Error) {
 	case .IF:
 		return parse_if_cmd(p)
 	case .INVALID:
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	case:
 		return parse_simple_cmd(p)
 	}
 }
 
-parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
+parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 	cmd := new(SimpleCommand)
 
 	cmd.assigns = make([dynamic]string)
@@ -232,7 +255,8 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 			if p.curr_token.kind != .LESS &&
 			   p.curr_token.kind != .GREATER &&
 			   p.curr_token.kind != .DGREAT {
-				return nil, .Unexpected_Token
+				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 			}
 
 			operator := p.curr_token.kind
@@ -243,7 +267,8 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 			advance_token(p)
 
 			if p.curr_token.kind != .WORD {
-				return nil, .Unexpected_Token
+				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 			}
 			redirect := Redirect {
 				kind = operator,
@@ -260,42 +285,42 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, Error) {
 			break loop
 		}
 	}
-	// if len(cmd.words) == 0 && len(cmd.assigns) == 0 && len(cmd.redirects) == 0 {
-	// 	return nil, .Unexpected_Token
-	// }
 
-	return cmd, nil
+	return cmd, ParseError{err_type = .None}
 }
 
-parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, Error) {
+parse_subshell_cmd :: proc(p: ^Parser) -> (^Subshell, ParseError) {
 	advance_token(p)
 
 	subshell := new(Subshell)
 	cmd, err := parse_cmdlist(p)
-	if err != nil {
+	if err.err_type != .None {
 		return nil, err
 	}
 	if !match(p, []TokenKind{.RIGHTPAREN}) {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
 	subshell.body = cmd
-	return subshell, nil
+	return subshell, ParseError{err_type = .None}
 }
 
-parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
+parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	advance_token(p)
 
 	for_cmd := new(ForLoop)
 
 	if p.curr_token.kind != .WORD {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 	for_cmd.variable = p.curr_token.text
 	advance_token(p)
 
 	if !match(p, []TokenKind{.IN}) {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
 	for p.curr_token.kind == .WORD {
@@ -309,28 +334,32 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, Error) {
 	}
 	skip_newlines(p)
 	if !match(p, []TokenKind{.DO}) {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 	skip_newlines(p)
 
 	body, err := parse_cmdlist(p)
-	if err != nil {
+	if err.err_type != .None {
 		return nil, err
 	}
 	for_cmd.body = body
 
 	if !match(p, []TokenKind{.DONE}) {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
-	return for_cmd, nil
+	return for_cmd, ParseError{err_type = .None}
 }
 
-parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
-	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> Error {
+parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
+	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> ParseError {
+		condition, err := parse_cmdlist(p)
+		if err.err_type != .None {
+			return err
+		}
 
-
-		condition := parse_cmdlist(p) or_return
 		if_cmd.condition = condition
 
 		if match(p, []TokenKind{.SEMICOLON}) {
@@ -339,22 +368,24 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 		skip_newlines(p)
 
 		if !match(p, []TokenKind{.THEN}) {
-			return .Unexpected_Token
+			msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+			return ParseError{err_type = .Unexpected_Token, msg = msg}
 		}
 
-		then_branch := parse_cmdlist(p) or_return
+		if_cmd.then_branch, err = parse_cmdlist(p)
+		if err.err_type != .None {
+			return err
+		}
 
-		if_cmd.then_branch = then_branch
 
-		return nil
+		return ParseError{err_type = .None}
 	}
-
 
 	advance_token(p)
 
 	if_clause := new(IfClause)
 
-	if err := parse_if(p, if_clause); err != nil {
+	if err := parse_if(p, if_clause); err.err_type != .None {
 		return nil, err
 	}
 
@@ -363,7 +394,7 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 	for match(p, []TokenKind{.ELIF}) {
 		elif_clause := new(IfClause)
 
-		if err := parse_if(p, elif_clause); err != nil {
+		if err := parse_if(p, elif_clause); err.err_type != .None {
 			return nil, err
 		}
 		curr_if.else_branch = elif_clause
@@ -375,7 +406,7 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 		skip_newlines(p)
 
 		else_body, err := parse_cmdlist(p)
-		if err != nil {
+		if err.err_type != .None {
 			return nil, err
 		}
 
@@ -383,28 +414,29 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, Error) {
 	}
 
 	if !match(p, []TokenKind{.FI}) {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
-	return if_clause, nil
+	return if_clause, ParseError{err_type = .None}
 }
 
-parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, Error) {
+parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, ParseError) {
 	advance_token(p)
 
 	b := new(BraceGroup)
 
 	body, err := parse_cmdlist(p)
-	if err != nil {
+	if err.err_type != .None {
 		return nil, err
 	}
 	b.body = body
 
 	if !match(p, []TokenKind{.RIGHTBRACE}) {
-		return nil, .Unexpected_Token
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
-	return b, nil
-
+	return b, ParseError{err_type = .None}
 }
 

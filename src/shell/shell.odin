@@ -4,7 +4,6 @@ import "../execute"
 import "../parser"
 import "../reader"
 import "../state"
-import "core:fmt"
 import "core:mem/virtual"
 import posix "core:sys/posix"
 
@@ -28,12 +27,11 @@ run_not_interactive :: proc(data: string) {
 
 	p: parser.Parser //TODO:the file will have a bang at the start have to include that
 	parser.parser_init(&p, data)
-	program, err := parser.parse(&p)
-	if err != nil {
-		err_msg := fmt.tprintf("The error:%v", err) //todo:this will be changed
-		reader.render_error(err_msg)
+	parser_event := parser.parse(&p)
+	if parser_event.parse_event_type == .ErrorType {
+		reader.render_error(parser_event.parse_err)
 	}
-	execute.execute(program, &s)
+	execute.execute(parser_event.program, &s)
 }
 
 
@@ -48,7 +46,15 @@ run_interactive :: proc() {
 	reader.reader_init(&r, s.prompt)
 
 	for {
-		data := reader.read_line(&r)
+		input_event := reader.read_line(&r)
+
+		data: string
+		#partial switch input_event.type {
+		case .Line_Ready:
+			data = input_event.data
+		case .Read_Error:
+			reader.render_error(input_event.err)
+		}
 
 		context.allocator = virtual.arena_allocator(&s.arena)
 		defer free_all(context.allocator)
@@ -57,12 +63,13 @@ run_interactive :: proc() {
 		p: parser.Parser
 		parser.parser_init(&p, data)
 
-		program, err := parser.parse(&p)
-		if err != nil {
-			err_msg := fmt.tprintf("The error:%v", err) //todo:this will be changed
-			reader.render_error(err_msg)
+		parse_event := parser.parse(&p)
+		if parse_event.parse_event_type == .ErrorType {
+			//ask the user to enter the required token as bash,zsh does
+			reader.render_error(parse_event.parse_err)
 		}
-		execute.execute(program, &s)
+		execute.execute(parse_event.program, &s)
+		reader.clear_buf(&r) //clear the buf before the next line
 	}
 }
 
