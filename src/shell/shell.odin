@@ -4,12 +4,13 @@ import "../execute"
 import "../parser"
 import "../reader"
 import "../state"
-import "core:fmt"
 import "core:mem/virtual"
+import "core:os"
 import posix "core:sys/posix"
 
 
 s: state.ShellState
+rem_procs: map[posix.pid_t]^execute.Process //store the process that are suspended or bg
 
 init_shell :: proc() {
 	state.shell_state_init(&s)
@@ -28,12 +29,11 @@ run_not_interactive :: proc(data: string) {
 
 	p: parser.Parser //TODO:the file will have a bang at the start have to include that
 	parser.parser_init(&p, data)
-	program, err := parser.parse(&p)
-	if err != nil {
-		err_msg := fmt.tprintf("The error:%v", err) //todo:this will be changed
-		reader.render_error(err_msg)
+	parser_event := parser.parse(&p)
+	if parser_event.parse_event_type == .ErrorType {
+		reader.render_error(parser_event.parse_err)
 	}
-	execute.execute(program, &s)
+	execute.execute(parser_event.command, &s)
 }
 
 
@@ -47,10 +47,19 @@ run_interactive :: proc() {
 	r: reader.ReaderState
 	reader.reader_init(&r, s.prompt)
 
-	for {
-		execute.reap_bg_processes(&s)
+	for s.is_running {
+		input_event := reader.read_line(&r)
 
-		data := reader.read_line(&r)
+		data: string
+		#partial switch input_event.type {
+		case .Line_Ready:
+			data = input_event.data
+		case .Read_Error:
+			reader.render_error(input_event.err)
+		case .Exit_Shell:
+			state.disable_raw(&s)
+			os.exit(0)
+		}
 
 		context.allocator = virtual.arena_allocator(&s.arena)
 		defer free_all(context.allocator)
@@ -59,13 +68,26 @@ run_interactive :: proc() {
 		p: parser.Parser
 		parser.parser_init(&p, data)
 
-		program, err := parser.parse(&p)
-		if err != nil {
-			err_msg := fmt.tprintf("The error:%v", err) //todo:this will be changed
-			reader.render_error(err_msg)
+		parse_event := parser.parse(&p)
+		if parse_event.parse_event_type == .ErrorType {
+			//ask the user to enter the required token as bash,zsh does
+			reader.render_error(parse_event.parse_err)
 		}
-		execute.execute(program, &s)
-
+		//render the error here
+		exec := execute.execute(parse_event.command, &s)
+		if exec.err != .None {
+			reader.render_error(exec.msg)
+		}
+		switch exec.status {
+		case .Background:
+		case .Stopped:
+		case .Suspended:
+			rem_procs[exec.process.pid] = exec.process //this allows to me reap the zombie processes usin signalfd and epoll() probably
+		case .Failed:
+			reader.render_error("failed to execute the command")
+		case .Finished:
+		}
+		reader.clear_buf(&r) //clear the buf before the next line
 	}
 }
 

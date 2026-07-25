@@ -12,7 +12,7 @@ out_stream: io.Stream
 @(init)
 set_stream :: proc "contextless" () {
 	context = runtime.default_context()
-	out_stream := os.to_stream(os.stdout)
+	out_stream = os.to_stream(os.stdout)
 }
 
 
@@ -40,6 +40,5 @@ render_error :: proc(msg: string) {
 
 @(private = "file")
 handle_render :: proc(data: []byte) {
-	stream := os.to_stream(os.stdout)
-	io.write(stream, data)
+	io.write(out_stream, data)
 }

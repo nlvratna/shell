@@ -8,139 +8,155 @@ import "core:strings"
 import posix "core:sys/posix"
 
 
-execute :: proc(program: parser.Program, s: ^state.ShellState) {
-	for cmd in program.cmds {
-		#partial switch _ in cmd {
-		case ^parser.SimpleCommand:
-			s.last_cmd_status = exec_cmd(cmd.(^parser.SimpleCommand), s)
-		}
-	}
+EventError :: enum {
+	None,
+	Fork_Error,
+	Env_Error,
+	Exec_Error,
+}
+
+ProcStatus :: enum {
+	Finished,
+	Suspended,
+	Stopped,
+	Background,
+	Failed,
+}
+
+ExecEvent :: struct {
+	status:  ProcStatus,
+	err:     EventError,
+	process: ^Process,
+	msg:     string,
 }
 
 
+execute :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
+	#partial switch c in cmd {
+	case:
+		return exec_simple(c.(^parser.SimpleCommand), s)
+	}
+}
+
 @(private)
-exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
-	reset_signal :: proc() {
-		signals := []posix.Signal{.SIGINT, .SIGQUIT, .SIGTSTP, .SIGTTIN, .SIGTTOU}
+exec_simple :: proc(c: ^parser.SimpleCommand, s: ^state.ShellState) -> ExecEvent {
+	p := new(Process)
+	create_process(p, c)
 
-		for sig in signals {
-			posix.signal(sig, auto_cast posix.SIG_DFL)
-		}
+	if s.is_interactive do state.disable_raw(s)
+	defer if s.is_interactive do state.enable_raw(s)
+
+	pid, err := spawn_process(p)
+	p.pid = pid
+	if err != .None {
+		return ExecEvent{err = err, msg = "fork failed"}
+	}
+	if p.is_bg {
+		return ExecEvent{status = .Background, process = p}
 	}
 
-	// fmt.println("disabling raw mode")
-	state.disable_raw(s)
+	sid := posix.getpgrp()
+	posix.setpgid(pid, pid) //set shell and child in the same group
 
-	shell_gpid := posix.getpgrp()
-	pid := posix.fork()
+	//Ignore terminal input and output so shell can take back the control
+	posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
+	posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
 
+	posix.tcsetpgrp(posix.STDIN_FILENO, pid) //handle the terminal to child
+	res := reap_process(pid)
+	posix.tcsetpgrp(posix.STDIN_FILENO, sid) //take back the terminal
+
+	res.process = p
+
+	if res.status == .Finished {
+		destroy_process(p)
+	}
+	return res
+}
+
+@(private)
+reap_process :: proc(pid: posix.pid_t) -> ExecEvent {
+	status: c.int
+	posix.waitpid(pid, &status, {.UNTRACED, .CONTINUED})
+
+	switch {
+	case posix.WIFEXITED(status):
+		return ExecEvent{status = .Finished}
+	case posix.WIFSIGNALED(status):
+		return ExecEvent{status = .Stopped}
+	case posix.WIFSTOPPED(status):
+		return ExecEvent{status = .Suspended}
+	case:
+		return ExecEvent{status = .Failed}
+	}
+}
+
+@(private)
+spawn_process :: proc(p: ^Process) -> (pid: posix.pid_t, err: EventError) {
+	pid = posix.fork()
+	if pid == -1 {
+		return -1, .Fork_Error
+	}
 	if pid == 0 {
-		child_pid := posix.getpid()
-		posix.setpgid(0, 0)
+		child_setup(p)
+		posix.execvp(p.cmd, raw_data(p.args))
+		posix.exit(127)
+	}
+	return pid, .None
+}
 
-		if !cmd.is_bg {
-			//TODO:handle the zombie process
-			posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
-			posix.tcsetpgrp(posix.STDIN_FILENO, child_pid)
-		}
+@(private)
+child_setup :: proc(p: ^Process) {
+	child_pid := posix.getpid()
+	p.pid = child_pid
 
-		reset_signal() //reset the signal for the child process
+	posix.setpgid(0, 0) // put child in its own process group
 
-		for r in cmd.redirects {
-			file_path := strings.clone_to_cstring(r.file)
-			defer delete(file_path)
-
-			flags: posix.O_Flags
-			mode: posix.mode_t = {.IRUSR, .IWUSR, .IRGRP, .IROTH}
-
-			#partial switch r.kind {
-			case .LESS:
-				flags = {.RDWR}
-			case .GREATER:
-				flags = {.WRONLY, .CREAT, .TRUNC}
-			case .DGREAT:
-				flags = {.WRONLY, .CREAT, .APPEND}
-			}
-
-			file_fd := posix.open(file_path, flags, mode)
-			defer posix.close(file_fd)
-
-			if file_fd < 0 {
-				posix.perror("shell:redirection error failed") //sends events accordignly to handle don't exit here
-				posix.exit(1)
-			}
-
-			if posix.dup2(file_fd, auto_cast r.fd) < 0 {
-				posix.perror("shell:dup2 redirection failed")
-				posix.exit(1)
-			}
-		}
-
-		for assign in cmd.assigns {
-			idx := strings.index_byte(assign, '=')
-			if idx == -1 do continue
-			key := strings.clone_to_cstring(assign[:idx])
-			defer delete(key)
-			val := strings.clone_to_cstring(assign[idx + 1:])
-			defer delete(val)
-
-			if posix.setenv(key, val, true) != .OK {
-				posix.perror("shell:cannot set key value")
-			}
-		}
-
-		if len(cmd.words) > 0 {
-			args := make([]cstring, len(cmd.words) + 1, context.temp_allocator)
-
-			for word, i in cmd.words {
-				args[i] = strings.clone_to_cstring(word)
-			}
-			args[len(cmd.words)] = nil
-
-			posix.execvp(args[0], &args[0])
-			posix.perror("shell: exec failed") //same do
-			posix.exit(127)
-		}
-	} else if pid > 0 {
-		defer state.enable_raw(s)
-
-		if (cmd.is_bg) {
-			s.bg_processes[len(s.bg_processes)] = pid
-			fmt.printf("[%d]PID:%d\n", len(s.bg_processes), pid) //send this up
-			return 0
-		}
-
-		posix.setpgid(pid, pid)
-
-		//Ignore terminal input and output so shell can take back the control
+	if !p.is_bg {
 		posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
-		posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
+		posix.tcsetpgrp(posix.STDIN_FILENO, child_pid)
+	}
 
-		posix.tcsetpgrp(posix.STDIN_FILENO, pid) //handle the terminal to child
+	reset_signal()
 
-		status: c.int
-		// fmt.println("called waitpid")
+	for r in p.redirects {
+		file_path := strings.clone_to_cstring(r.file)
+		defer delete(file_path)
 
-		posix.waitpid(pid, &status, {.UNTRACED, .CONTINUED})
+		flags: posix.O_Flags
+		mode: posix.mode_t = {.IRUSR, .IWUSR, .IRGRP, .IROTH}
 
-		posix.tcsetpgrp(posix.STDIN_FILENO, shell_gpid)
+		#partial switch r.kind {
+		case .GREATER:
+			flags = {.WRONLY, .CREAT, .TRUNC}
+		case .DGREAT:
+			flags = {.WRONLY, .CREAT, .APPEND}
+		}
 
-		// fmt.println("enabling raw mode")
-		switch {
-		case posix.WIFEXITED(status):
-			return int(posix.WEXITSTATUS(status))
-		case posix.WIFSIGNALED(status):
-			return 128 + int(posix.WTERMSIG(status))
-		case posix.WIFSTOPPED(status):
-			fmt.printf("\n[Job %d suspended]\n", pid) //store this to bring this back
-			return 128 + int(posix.WSTOPSIG(status))
-		case:
-			return 1
+		fd := posix.open(file_path, flags, mode)
+		defer posix.close(fd)
+		if fd < 0 {
+			posix.exit(1)
+		}
+		if posix.dup2(fd, auto_cast r.fd) < 0 {
+			posix.exit(1)
 		}
 	}
-	// fmt.println("enabling raw mode")
-	posix.perror("shell:fork failed")
-	return 1
+
+	for k, v in p.env {
+		if posix.setenv(k, v, true) != .OK {
+			continue
+		}
+	}
+
+}
+
+@(private)
+reset_signal :: proc() {
+	signals := []posix.Signal{.SIGINT, .SIGQUIT, .SIGTSTP, .SIGTTIN, .SIGTTOU}
+	for sig in signals {
+		posix.signal(sig, auto_cast posix.SIG_DFL)
+	}
 }
 
 //use sigaction and register a sigchild handler for this
