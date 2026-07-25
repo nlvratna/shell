@@ -28,7 +28,6 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 		}
 	}
 
-	// fmt.println("disabling raw mode")
 	state.disable_raw(s)
 
 	shell_gpid := posix.getpgrp()
@@ -118,13 +117,11 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 		posix.tcsetpgrp(posix.STDIN_FILENO, pid) //handle the terminal to child
 
 		status: c.int
-		// fmt.println("called waitpid")
 
 		posix.waitpid(pid, &status, {.UNTRACED, .CONTINUED})
 
 		posix.tcsetpgrp(posix.STDIN_FILENO, shell_gpid)
 
-		// fmt.println("enabling raw mode")
 		switch {
 		case posix.WIFEXITED(status):
 			return int(posix.WEXITSTATUS(status))
@@ -137,7 +134,6 @@ exec_cmd :: proc(cmd: ^parser.SimpleCommand, s: ^state.ShellState) -> int {
 			return 1
 		}
 	}
-	// fmt.println("enabling raw mode")
 	posix.perror("shell:fork failed")
 	return 1
 }
