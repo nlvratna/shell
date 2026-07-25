@@ -56,10 +56,12 @@ Input :: union {
 }
 
 InputEventType :: enum {
+	None,
 	Line_Ready,
 	Read_Error,
-	Sigchld,
-	Sigwhich,
+	Exit_Shell,
+	SigChld,
+	SigWhich,
 }
 
 InputEvent :: struct {
@@ -157,6 +159,8 @@ read_line :: proc(r: ^ReaderState) -> InputEvent {
 		return InputEvent{err = data, type = type}
 	} else if type == .Line_Ready {
 		return InputEvent{data = data, type = type}
+	} else if type == .Exit_Shell {
+		return InputEvent{type = type}
 	}
 	return InputEvent{type = type}
 
@@ -235,10 +239,11 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 		print(r)
 	}
 
-	handle_ctrld :: proc(r: ^ReaderState) {
+	handle_ctrld :: proc(r: ^ReaderState) -> InputEventType {
 		if len(r.buffer) == 0 {
-			os.exit(0) //who disables raw mode idiot -- TODO
+			return .Exit_Shell
 		}
+		return .None
 	}
 
 
@@ -278,7 +283,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 			case .Ctrl_C:
 				handle_ctrlc(r, stream)
 			case .Ctrl_D:
-				handle_ctrld(r)
+				return handle_ctrld(r)
 			case .Ctrl_L:
 				render(CursorControl[.ClearScreen])
 				render(CursorControl[.Home])

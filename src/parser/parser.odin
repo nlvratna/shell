@@ -29,7 +29,8 @@ ParseEventType :: enum {
 
 ParserEvent :: struct {
 	parse_event_type: ParseEventType,
-	program:          Program,
+	// program:          Program, // is this the better option?
+	command:          Command, //should I take this to handle errors in execution
 	parse_err:        string,
 }
 
@@ -89,23 +90,17 @@ skip_newlines :: proc(p: ^Parser) {
 
 //TODO : remove some code duplication
 parse :: proc(p: ^Parser) -> ParserEvent {
-	cmds := make([dynamic]Command)
 
 	skip_newlines(p)
-
-	for p.curr_token.kind != .EOF {
-		cmd, err := parse_cmdlist(p)
-		if err.err_type != .None {
-			return ParserEvent{parse_err = err.msg, parse_event_type = .ErrorType}
-		}
-		skip_newlines(p)
-		append(&cmds, cmd)
+	if p.curr_token.kind == .EOF {
 	}
-
-	p := Program {
-		cmds = cmds,
+	cmd, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return ParserEvent{parse_err = err.msg, parse_event_type = .ErrorType}
 	}
-	return ParserEvent{parse_event_type = .Ast_Ready, program = p}
+	skip_newlines(p)
+
+	return ParserEvent{parse_event_type = .Ast_Ready, command = cmd}
 }
 
 
