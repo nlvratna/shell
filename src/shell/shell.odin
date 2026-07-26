@@ -20,6 +20,7 @@ destroy_shell :: proc() {
 	state.shell_state_destroy(&s)
 }
 
+// I don't think this is the right way to do it
 run_not_interactive :: proc(data: string) {
 	s.is_interactive = false
 
