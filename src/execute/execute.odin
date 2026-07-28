@@ -37,7 +37,10 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 
 exec_list :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 	j := new(jobs.Job)
-	// j.command =  I don't have the original command as parser takes it so either the cmd in passed to exec event or parser has to call the execute so original string exists or parser has to return the string too as the string might have error
+	// j.command =  I don't have the original command as parser takes it so
+	// either the cmd in passed to exec event or parser has to call the execute
+	// so original string exists or parser has to return the string too as the
+	// string might have error
 	j.procs = make([dynamic]^jobs.Process)
 	defer delete(j.procs)
 
@@ -50,9 +53,13 @@ exec_list :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 }
 
 
-// might ne be int
 exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	if s.is_interactive do state.disable_raw(s)
+	defer if s.is_interactive do state.enable_raw(s)
+
 	#partial switch c in cmd {
+	case ^parser.IfClause:
+		return exec_if(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
@@ -70,6 +77,31 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 // 	}
 // }
 
+exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	cond, err := exec_cmd(c.condition, s, j)
+	if err != .None {
+		return 1, err
+	}
+	if (cond == 0) {
+		exec, if_err := exec_cmd(c.then_branch, s, j)
+		if if_err != .None {
+			return 1, err
+		}
+
+		if exec == 0 {
+			return 0, .None
+		}
+	}
+	if c.else_branch == nil {
+		return 1, .None
+	}
+
+	if type_of(c.else_branch) == ^parser.IfClause {
+		return exec_if(c.else_branch.(^parser.IfClause), s, j)
+	}
+	return exec_cmd(c.else_branch, s, j)
+}
+
 @(private)
 exec_simple :: proc(
 	c: ^parser.SimpleCommand,
@@ -78,7 +110,7 @@ exec_simple :: proc(
 ) -> (
 	int,
 	EventError,
-)  /* -> ExecEvent */{
+) {
 	p := new(jobs.Process) //this should be somewhere in exec_cmd()
 	jobs.create_process(p, c)
 
@@ -89,8 +121,6 @@ exec_simple :: proc(
 
 	append(&j.procs, p)
 
-	if s.is_interactive do state.disable_raw(s)
-	defer if s.is_interactive do state.enable_raw(s)
 
 	err := spawn_process(p, j)
 	if err != .None {
@@ -120,6 +150,7 @@ exec_simple :: proc(
 	p.exit_status = exit_status
 	return exit_status, .None
 }
+
 @(private)
 reap_process :: proc(pid: posix.pid_t) -> int {
 	status: c.int

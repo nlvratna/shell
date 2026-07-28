@@ -73,7 +73,7 @@ UntilLoop :: struct {
 IfClause :: struct {
 	condition:   Command,
 	then_branch: Command,
-	else_branch: Maybe(Command),
+	else_branch: Command,
 }
 
 CaseItem :: struct {
@@ -148,7 +148,7 @@ print_command :: proc(cmd: Command, level: int) {
 		if c.else_branch != nil {
 			print_indent(level + 1)
 			fmt.println("Else/Elif:")
-			print_command(c.else_branch.(Command), level + 2)
+			print_command(c.else_branch, level + 2)
 		}
 
 	case ^ForLoop:

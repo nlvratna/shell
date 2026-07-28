@@ -5,7 +5,6 @@ import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
-import "core:io"
 import "core:mem/virtual"
 import "core:os"
 import posix "core:sys/posix"
@@ -52,6 +51,7 @@ run_interactive :: proc() {
 
 	for s.is_running {
 		input_event := reader.read_line(&r, os.to_stream(os.stdin))
+		defer reader.clear_buf(&r) //works even when an error occurs
 
 		data: string
 		#partial switch input_event.type {
@@ -59,6 +59,7 @@ run_interactive :: proc() {
 			data = input_event.data
 		case .Read_Error:
 			reader.render_error(input_event.err)
+			continue
 		case .Exit_Shell:
 			state.disable_raw(&s)
 			os.exit(0)
@@ -73,15 +74,17 @@ run_interactive :: proc() {
 
 		parse_event := parser.parse(&p)
 		if parse_event.parse_event_type == .ErrorType {
-			//ask the user to enter the required token as bash,zsh does
+			//ask the user to enter the required token as bash,zsh does maybe
 			reader.render_error(parse_event.parse_err)
+			continue
 		}
 
 		exec := execute.exec(parse_event.command, &s)
 		if exec.err != .None {
 			reader.render_error(exec.msg)
+			continue
 		}
 		//may be this is executing early
-		reader.clear_buf(&r) //clear the buf before the next line
+		// reader.clear_buf(&r) //clear the buf before the next line
 	}
 }
