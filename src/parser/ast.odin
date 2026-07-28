@@ -100,12 +100,10 @@ print_indent :: proc(level: int) {
 	}
 }
 
-print_ast :: proc(prog: ^Program) {
+print_ast :: proc(cmd: Command) {
 	fmt.println("=== ABSTRACT SYNTAX TREE ===")
-	for cmd in prog.cmds {
-		print_command(cmd, 0)
-		fmt.println("----------------------------")
-	}
+	print_command(cmd, 0)
+	fmt.println("----------------------------")
 }
 
 print_command :: proc(cmd: Command, level: int) {

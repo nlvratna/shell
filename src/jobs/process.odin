@@ -1,4 +1,4 @@
-package execute
+package jobs
 
 import "core:strings"
 
@@ -13,19 +13,18 @@ ProcessErrorType :: enum {
 
 
 Process :: struct {
-	pid:       posix.pid_t,
-	id:        int,
-	env:       map[cstring]cstring,
-	cmd:       cstring,
-	args:      []cstring,
-	redirects: [dynamic]parser.Redirect,
-	is_bg:     bool,
+	pid:         posix.pid_t,
+	id:          int,
+	env:         map[cstring]cstring,
+	cmd:         cstring,
+	args:        []cstring,
+	redirects:   [dynamic]parser.Redirect,
+	is_first:    bool, // is the first command in job
+	is_last:     bool, // is the last command in job
+	exit_status: int,
 }
 
 create_process :: proc(p: ^Process, cmd: ^parser.SimpleCommand) -> ProcessErrorType {
-
-	p.is_bg = cmd.is_bg
-
 	append(&p.redirects, ..cmd.redirects[:])
 	p.env = make(map[cstring]cstring)
 	for assign in cmd.assigns {

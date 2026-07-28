@@ -1,5 +1,6 @@
 package state
 
+import "core:fmt"
 import "core:os"
 
 import "core:mem/virtual"
@@ -34,9 +35,11 @@ shell_state_init :: proc(s: ^ShellState) {
 	s.is_running = true
 	s.prompt = "$ "
 
-	cd, alloc_err := os.get_working_directory(context.temp_allocator)
+	cwd, alloc_err := os.get_working_directory(context.temp_allocator)
 	if alloc_err == nil {
-		s.cwd = cd
+		s.cwd = cwd
+	} else {
+		fmt.println("Error is here")
 	}
 
 	//TODO: set binaries and builtins
