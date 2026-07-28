@@ -211,7 +211,7 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 	case .IF:
 		return parse_if_cmd(p)
 	case .INVALID:
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	case:
 		return parse_simple_cmd(p)
@@ -250,7 +250,7 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 			if p.curr_token.kind != .LESS &&
 			   p.curr_token.kind != .GREATER &&
 			   p.curr_token.kind != .DGREAT {
-				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 			}
 
@@ -262,7 +262,7 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 			advance_token(p)
 
 			if p.curr_token.kind != .WORD {
-				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 			}
 			redirect := Redirect {
@@ -363,7 +363,7 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
 		skip_newlines(p)
 
 		if !match(p, []TokenKind{.THEN}) {
-			msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+			msg := fmt.tprintf("Unexptected token,%s", TokenKind.THEN)
 			return ParseError{err_type = .Unexpected_Token, msg = msg}
 		}
 
@@ -408,8 +408,10 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
 		curr_if.else_branch = else_body
 	}
 
+	if p.curr_token.kind != .FI {
+	}
 	if !match(p, []TokenKind{.FI}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Expected token:%s", TokenKind.FI)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 

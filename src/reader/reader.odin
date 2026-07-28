@@ -149,8 +149,7 @@ clear_buf :: proc(r: ^ReaderState) {
 	r.cursor_pos = 0
 }
 
-read_line :: proc(r: ^ReaderState) -> InputEvent {
-	stream := os.to_stream(os.stdin)
+read_line :: proc(r: ^ReaderState, stream: io.Stream) -> InputEvent {
 	type := read(r, stream)
 
 	data := utf8.runes_to_string(r.buffer[:], context.temp_allocator)
@@ -264,7 +263,6 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 		}
 		r.cursor_pos += 1
 	}
-
 
 	// clear_buf(r)
 	print(r)

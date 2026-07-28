@@ -73,7 +73,7 @@ UntilLoop :: struct {
 IfClause :: struct {
 	condition:   Command,
 	then_branch: Command,
-	else_branch: Maybe(Command),
+	else_branch: Command,
 }
 
 CaseItem :: struct {
@@ -100,12 +100,10 @@ print_indent :: proc(level: int) {
 	}
 }
 
-print_ast :: proc(prog: ^Program) {
+print_ast :: proc(cmd: Command) {
 	fmt.println("=== ABSTRACT SYNTAX TREE ===")
-	for cmd in prog.cmds {
-		print_command(cmd, 0)
-		fmt.println("----------------------------")
-	}
+	print_command(cmd, 0)
+	fmt.println("----------------------------")
 }
 
 print_command :: proc(cmd: Command, level: int) {
@@ -150,7 +148,7 @@ print_command :: proc(cmd: Command, level: int) {
 		if c.else_branch != nil {
 			print_indent(level + 1)
 			fmt.println("Else/Elif:")
-			print_command(c.else_branch.(Command), level + 2)
+			print_command(c.else_branch, level + 2)
 		}
 
 	case ^ForLoop:

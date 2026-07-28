@@ -1,5 +1,6 @@
 package state
 
+import "core:fmt"
 import "core:os"
 
 import "core:mem/virtual"
@@ -36,15 +37,21 @@ shell_state_init :: proc(s: ^ShellState) {
 	s.is_running = true
 	s.prompt = "$ "
 
-	cd, alloc_err := os.get_working_directory(context.temp_allocator)
+	cwd, alloc_err := os.get_working_directory(context.temp_allocator)
 	if alloc_err == nil {
-		s.cwd = cd
+		s.cwd = cwd
+	} else {
+		fmt.println("Error is here")
 	}
 
 	s.bg_processes = make(map[int]posix.pid_t)
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
 	s.builtins = make(map[string]BuiltinProc)
+
+
+	result := posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &s.termios)
+	assert(result == .OK)
 }
 
 shell_state_destroy :: proc(s: ^ShellState) {
@@ -55,19 +62,14 @@ shell_state_destroy :: proc(s: ^ShellState) {
 
 
 enable_raw :: proc(s: ^ShellState) {
-	result := posix.tcgetattr(posix.STDIN_FILENO, &s.termios)
-	assert(result == .OK)
-
 	raw := s.termios
 	raw.c_iflag -= {.BRKINT, .ICRNL, .INPCK, .ISTRIP, .IXON}
 	raw.c_lflag -= {.ECHO, .ICANON, .IEXTEN, .ISIG}
 	raw.c_cc[.VMIN] = 1
 	raw.c_cc[.VTIME] = 0
 
-	result = posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &raw)
+	result := posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &raw)
 	assert(result == .OK)
-
-
 }
 
 disable_raw :: proc(s: ^ShellState) {

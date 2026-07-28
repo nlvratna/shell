@@ -1,5 +1,6 @@
 package execute
 
+import "../jobs"
 import "../parser"
 import "../state"
 import "core:c"
@@ -15,106 +16,188 @@ EventError :: enum {
 	Exec_Error,
 }
 
-ProcStatus :: enum {
-	Finished,
-	Suspended,
-	Stopped,
-	Background,
-	Failed,
-}
+// ExecStatus :: enum {
+// 	Finished,
+// 	Suspended,
+// 	Stopped,
+// 	Background,
+// 	Failed,
+// }
 
 ExecEvent :: struct {
-	status:  ProcStatus,
-	err:     EventError,
-	process: ^Process,
-	msg:     string,
+	// status: ExecStatus,
+	err: EventError,
+	job: ^jobs.Job,
+	msg: string,
 }
 
 
-execute :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
-	#partial switch c in cmd {
-	case:
-		return exec_simple(c.(^parser.SimpleCommand), s)
+exec :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
+	return exec_list(cmd, s)
+}
+
+exec_list :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
+	j := new(jobs.Job)
+	// j.command =  I don't have the original command as parser takes it so
+	// either the cmd in passed to exec event or parser has to call the execute
+	// so original string exists or parser has to return the string too as the
+	// string might have error
+	j.procs = make([dynamic]^jobs.Process)
+	defer delete(j.procs)
+
+	left, err := exec_cmd(cmd, s, j)
+	if err != .None {
+		return ExecEvent{err = err}
 	}
+
+	return ExecEvent{job = j}
 }
 
-@(private)
-exec_simple :: proc(c: ^parser.SimpleCommand, s: ^state.ShellState) -> ExecEvent {
-	p := new(Process)
-	create_process(p, c)
 
+exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
 	if s.is_interactive do state.disable_raw(s)
 	defer if s.is_interactive do state.enable_raw(s)
 
-	pid, err := spawn_process(p)
-	p.pid = pid
-	if err != .None {
-		return ExecEvent{err = err, msg = "fork failed"}
+	#partial switch c in cmd {
+	case ^parser.IfClause:
+		return exec_if(c, s, j)
+	case:
+		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
-	if p.is_bg {
-		return ExecEvent{status = .Background, process = p}
+}
+
+
+// exec_pipeline :: proc(cmd: parser.Command, s: ^state.ShellState) -> int {
+// 	//execute a pipe line
+// }
+
+// execute :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
+// 	#partial switch c in cmd {
+// 	case:
+// 		return exec_simple(c.(^parser.SimpleCommand), s)
+// 	}
+// }
+
+exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	cond, err := exec_cmd(c.condition, s, j)
+	if err != .None {
+		return 1, err
+	}
+	if (cond == 0) {
+		exec, if_err := exec_cmd(c.then_branch, s, j)
+		if if_err != .None {
+			return 1, err
+		}
+
+		if exec == 0 {
+			return 0, .None
+		}
+	}
+	if c.else_branch == nil {
+		return 1, .None
+	}
+
+	if type_of(c.else_branch) == ^parser.IfClause {
+		return exec_if(c.else_branch.(^parser.IfClause), s, j)
+	}
+	return exec_cmd(c.else_branch, s, j)
+}
+
+@(private)
+exec_simple :: proc(
+	c: ^parser.SimpleCommand,
+	s: ^state.ShellState,
+	j: ^jobs.Job,
+) -> (
+	int,
+	EventError,
+) {
+	p := new(jobs.Process) //this should be somewhere in exec_cmd()
+	jobs.create_process(p, c)
+
+
+	if len(j.procs) == 0 {
+		p.is_first = true
+	}
+
+	append(&j.procs, p)
+
+
+	err := spawn_process(p, j)
+	if err != .None {
+		return 1, err
+	}
+
+	if p.is_first {
+		j.pgid = p.pid
+	}
+
+	if c.is_bg {
+		j.is_bg = true
+		return 0, .None
 	}
 
 	sid := posix.getpgrp()
-	posix.setpgid(pid, pid) //set shell and child in the same group
+	posix.setpgid(p.pid, j.pgid) //place the child in the job process group
 
 	//Ignore terminal input and output so shell can take back the control
 	posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
 	posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
 
-	posix.tcsetpgrp(posix.STDIN_FILENO, pid) //handle the terminal to child
-	res := reap_process(pid)
+	posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid) //handle the terminal to child
+	exit_status := reap_process(p.pid)
 	posix.tcsetpgrp(posix.STDIN_FILENO, sid) //take back the terminal
 
-	res.process = p
-
-	if res.status == .Finished {
-		destroy_process(p)
-	}
-	return res
+	p.exit_status = exit_status
+	return exit_status, .None
 }
 
 @(private)
-reap_process :: proc(pid: posix.pid_t) -> ExecEvent {
+reap_process :: proc(pid: posix.pid_t) -> int {
 	status: c.int
 	posix.waitpid(pid, &status, {.UNTRACED, .CONTINUED})
 
 	switch {
 	case posix.WIFEXITED(status):
-		return ExecEvent{status = .Finished}
+		return int(posix.WEXITSTATUS(status))
 	case posix.WIFSIGNALED(status):
-		return ExecEvent{status = .Stopped}
+		return 128 + int(posix.WTERMSIG(status))
 	case posix.WIFSTOPPED(status):
-		return ExecEvent{status = .Suspended}
+		return 128 + int(posix.WSTOPSIG(status))
 	case:
-		return ExecEvent{status = .Failed}
+		return 1
 	}
 }
 
 @(private)
-spawn_process :: proc(p: ^Process) -> (pid: posix.pid_t, err: EventError) {
-	pid = posix.fork()
+spawn_process :: proc(p: ^jobs.Process, j: ^jobs.Job) -> (err: EventError) {
+	pid := posix.fork()
 	if pid == -1 {
-		return -1, .Fork_Error
+		return .Fork_Error
 	}
 	if pid == 0 {
-		child_setup(p)
+		child_setup(p, j)
 		posix.execvp(p.cmd, raw_data(p.args))
-		posix.exit(127)
+		posix.exit(127) //may not need this
 	}
-	return pid, .None
+	p.pid = pid
+	return .None
 }
 
 @(private)
-child_setup :: proc(p: ^Process) {
+child_setup :: proc(p: ^jobs.Process, j: ^jobs.Job) {
 	child_pid := posix.getpid()
-	p.pid = child_pid
 
-	posix.setpgid(0, 0) // put child in its own process group
+	if p.is_first {
+		posix.setpgid(child_pid, child_pid)
+		j.pgid = child_pid
+	} else {
+		posix.setpgid(child_pid, j.pgid)
+	}
 
-	if !p.is_bg {
+	if !j.is_bg {
 		posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
-		posix.tcsetpgrp(posix.STDIN_FILENO, child_pid)
+		posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid)
 	}
 
 	reset_signal()
@@ -138,7 +221,7 @@ child_setup :: proc(p: ^Process) {
 		if fd < 0 {
 			posix.exit(1)
 		}
-		if posix.dup2(fd, auto_cast r.fd) < 0 {
+		if posix.dup2(fd, posix.FD(r.fd)) < 0 {
 			posix.exit(1)
 		}
 	}
