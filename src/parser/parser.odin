@@ -307,14 +307,14 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	for_cmd := new(ForLoop)
 
 	if p.curr_token.kind != .WORD {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", TokenKind.WORD)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 	for_cmd.variable = p.curr_token.text
 	advance_token(p)
 
 	if !match(p, []TokenKind{.IN}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", TokenKind.IN)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
@@ -329,7 +329,7 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	}
 	skip_newlines(p)
 	if !match(p, []TokenKind{.DO}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", TokenKind.DO)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 	skip_newlines(p)

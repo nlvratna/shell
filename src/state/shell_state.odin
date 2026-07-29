@@ -47,7 +47,7 @@ shell_state_init :: proc(s: ^ShellState) {
 	s.builtins = make(map[string]BuiltinProc)
 
 
-	result := posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &s.termios)
+	result := posix.tcgetattr(posix.STDIN_FILENO, &s.termios)
 	assert(result == .OK)
 }
 

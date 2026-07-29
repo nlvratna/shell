@@ -44,6 +44,9 @@ exec_list :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 	j.procs = make([dynamic]^jobs.Process)
 	defer delete(j.procs)
 
+	if s.is_interactive do state.disable_raw(s)
+	defer if s.is_interactive do state.enable_raw(s)
+
 	left, err := exec_cmd(cmd, s, j)
 	if err != .None {
 		return ExecEvent{err = err}
@@ -54,9 +57,6 @@ exec_list :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 
 
 exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
-	if s.is_interactive do state.disable_raw(s)
-	defer if s.is_interactive do state.enable_raw(s)
-
 	#partial switch c in cmd {
 	case ^parser.IfClause:
 		return exec_if(c, s, j)
@@ -83,15 +83,13 @@ exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int
 		return -1, err
 	}
 	if (cond == 0) {
-		exec, if_err := exec_cmd(c.then_branch, s, j)
+		exec_status, if_err := exec_cmd(c.then_branch, s, j)
 		if if_err != .None {
-			return -1, err
+			return -1, if_err
 		}
-
-		if exec == 0 {
-			return 0, .None
-		}
+		return exec_status, .None
 	}
+
 	if c.else_branch == nil {
 		return -1, .None
 	}
