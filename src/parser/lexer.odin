@@ -228,7 +228,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 @(private = "file")
 is_shell_operator :: proc(c: rune) -> bool {
 	switch c {
-	case '|', '&', ';', '<', '>', '(', ')':
+	case '|', '&', ';', '<', '>':
 		return true
 	case:
 		return false

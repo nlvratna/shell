@@ -3,7 +3,9 @@ package execute
 import "../jobs"
 import "../parser"
 import "../state"
+import "base:runtime"
 import "core:c"
+import "core:fmt"
 import "core:strings"
 import posix "core:sys/posix"
 
@@ -22,6 +24,8 @@ EventError :: enum {
 // 	Background,
 // 	Failed,
 // }
+
+env: map[string]string
 
 ExecEvent :: struct {
 	// status: ExecStatus,
@@ -109,6 +113,19 @@ exec_simple :: proc(
 	int,
 	EventError,
 ) {
+	if len(c.words) == 0 {
+		if len(c.assigns) == 1 {
+			//doe this effectively mean variable
+			assign := c.assigns[0]
+			idx := strings.index_byte(assign, '=')
+			if idx == -1 do return 0, .None //this could be error
+			key := strings.clone(assign[:idx])
+			val := strings.clone(assign[idx + 1:])
+			env[key] = val
+		}
+		return 0, .None
+	}
+
 	p := new(jobs.Process) //this should be somewhere in exec_cmd()
 	jobs.create_process(p, c)
 

@@ -3,7 +3,6 @@ package state
 import "core:fmt"
 import "core:os"
 
-import "core:mem/virtual"
 import posix "core:sys/posix"
 
 
@@ -15,7 +14,6 @@ TermState :: struct {
 }
 
 ShellState :: struct {
-	arena:            virtual.Arena,
 	binaries:         [dynamic]string,
 	builtins:         map[string]BuiltinProc,
 	is_running:       bool,
@@ -28,10 +26,6 @@ ShellState :: struct {
 
 
 shell_state_init :: proc(s: ^ShellState) {
-	err := virtual.arena_init_growing(&s.arena) // I don't think I need as context.temp_allocator is the same thing we'll see
-	if err != nil {
-		panic("couldn't allocate memory")
-	}
 	s.is_running = true
 	s.prompt = "$ "
 
@@ -52,7 +46,6 @@ shell_state_init :: proc(s: ^ShellState) {
 }
 
 shell_state_destroy :: proc(s: ^ShellState) {
-	virtual.arena_destroy(&s.arena)
 	delete(s.binaries)
 	delete(s.builtins)
 }

@@ -1,6 +1,7 @@
 package parser
 
 import "core:fmt"
+import "core:mem/virtual"
 import "core:strconv"
 import "core:strings"
 
@@ -94,6 +95,7 @@ parse :: proc(p: ^Parser) -> ParserEvent {
 	skip_newlines(p)
 	if p.curr_token.kind == .EOF {
 	}
+	context.allocator = context.temp_allocator //is this good?
 	cmd, err := parse_cmdlist(p)
 	if err.err_type != .None {
 		return ParserEvent{parse_err = err.msg, parse_event_type = .ErrorType}

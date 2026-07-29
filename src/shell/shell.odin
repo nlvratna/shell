@@ -5,7 +5,6 @@ import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
-import "core:mem/virtual"
 import "core:os"
 import posix "core:sys/posix"
 
@@ -25,8 +24,6 @@ destroy_shell :: proc() {
 run_not_interactive :: proc(data: string) {
 	s.is_interactive = false
 
-	context.allocator = virtual.arena_allocator(&s.arena)
-	defer free_all(context.allocator)
 	defer free_all(context.temp_allocator)
 
 	p: parser.Parser //TODO:the file will have a bang at the start have to include that
@@ -65,9 +62,6 @@ run_interactive :: proc() {
 			os.exit(0)
 		}
 
-		context.allocator = virtual.arena_allocator(&s.arena)
-		defer free_all(context.allocator)
-		defer free_all(context.temp_allocator)
 
 		p: parser.Parser
 		parser.parser_init(&p, data)
@@ -78,13 +72,13 @@ run_interactive :: proc() {
 			reader.render_error(parse_event.parse_err)
 			continue
 		}
+		defer free_all(context.temp_allocator) //free the ast
 
+		// parser.print_ast(parse_event.command)
 		exec := execute.exec(parse_event.command, &s)
 		if exec.err != .None {
 			reader.render_error(exec.msg)
 			continue
 		}
-		//may be this is executing early
-		// reader.clear_buf(&r) //clear the buf before the next line
 	}
 }

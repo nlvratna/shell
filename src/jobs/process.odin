@@ -18,7 +18,7 @@ Process :: struct {
 	env:         map[cstring]cstring,
 	cmd:         cstring,
 	args:        []cstring,
-	redirects:   [dynamic]parser.Redirect,
+	redirects:   [dynamic]parser.Redirect, //this might not exist clone
 	is_first:    bool, // is the first command in job
 	is_last:     bool, // is the last command in job
 	exit_status: int,
@@ -45,7 +45,7 @@ create_process :: proc(p: ^Process, cmd: ^parser.SimpleCommand) -> ProcessErrorT
 	return nil
 }
 
-//may be I don't need this because of arena
+//TODO:this is wrong change this
 destroy_process :: proc(p: ^Process) {
 	delete(p.args)
 	delete(p.cmd)
