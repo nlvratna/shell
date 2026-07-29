@@ -1,4 +1,4 @@
-package parser
+package parser//for a command
 
 import "core:fmt"
 import "core:mem/virtual"
@@ -231,12 +231,6 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 		#partial switch p.curr_token.kind {
 		case .WORD:
 			word := p.curr_token.text
-			if strings.has_prefix(word, "\"") && strings.has_suffix(word, "\"") {
-				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
-			}
-			if strings.has_prefix(word, "'") && strings.has_suffix(word, "'") {
-				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
-			}
 			append(&cmd.words, word)
 			advance_token(p)
 		case .ASSIGNMENT_WORD:

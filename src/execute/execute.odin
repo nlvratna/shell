@@ -5,7 +5,6 @@ import "../parser"
 import "../state"
 import "base:runtime"
 import "core:c"
-import "core:fmt"
 import "core:strings"
 import posix "core:sys/posix"
 
@@ -24,8 +23,6 @@ EventError :: enum {
 // 	Background,
 // 	Failed,
 // }
-
-env: map[string]string
 
 ExecEvent :: struct {
 	// status: ExecStatus,
@@ -113,7 +110,7 @@ exec_simple :: proc(
 	int,
 	EventError,
 ) {
-	if len(c.words) == 0 {
+	if len(c.words) == 0 { 	//it would probabaly be easy if I create a Node for this like Declare/Var Expression
 		if len(c.assigns) == 1 {
 			//doe this effectively mean variable
 			assign := c.assigns[0]
@@ -121,7 +118,7 @@ exec_simple :: proc(
 			if idx == -1 do return 0, .None //this could be error
 			key := strings.clone(assign[:idx])
 			val := strings.clone(assign[idx + 1:])
-			env[key] = val
+			s.vars[key] = val
 		}
 		return 0, .None
 	}
@@ -136,8 +133,7 @@ exec_simple :: proc(
 
 	append(&j.procs, p)
 
-
-	err := spawn_process(p, j)
+	err := spawn_process(s, p, j)
 	if err != .None {
 		return -1, err
 	}
@@ -184,15 +180,18 @@ reap_process :: proc(pid: posix.pid_t) -> int {
 }
 
 @(private)
-spawn_process :: proc(p: ^jobs.Process, j: ^jobs.Job) -> (err: EventError) {
+spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (err: EventError) {
 	pid := posix.fork()
 	if pid == -1 {
 		return .Fork_Error
 	}
 	if pid == 0 {
 		child_setup(p, j)
-		posix.execvp(p.cmd, raw_data(p.args))
-		posix.exit(127) //may not need this
+		args := jobs.expand_env(s, p)
+		defer delete(args)
+
+		posix.execvp(p.cmd, raw_data(args))
+		// posix.exit(127) //may not need this command not found should not reach here I believe
 	}
 	p.pid = pid
 	return .None

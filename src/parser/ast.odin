@@ -28,6 +28,7 @@ Redirect :: struct {
 	fd:   int,
 }
 
+
 SimpleCommand :: struct {
 	assigns:   [dynamic]string,
 	words:     [dynamic]string,

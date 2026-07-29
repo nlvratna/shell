@@ -14,6 +14,7 @@ TermState :: struct {
 }
 
 ShellState :: struct {
+	vars:             map[string]string,
 	binaries:         [dynamic]string,
 	builtins:         map[string]BuiltinProc,
 	is_running:       bool,
@@ -35,7 +36,7 @@ shell_state_init :: proc(s: ^ShellState) {
 	} else {
 		fmt.println("Error is here")
 	}
-
+	s.vars = make(map[string]string)
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
 	s.builtins = make(map[string]BuiltinProc)
