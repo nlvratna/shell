@@ -80,12 +80,12 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
 	cond, err := exec_cmd(c.condition, s, j)
 	if err != .None {
-		return 1, err
+		return -1, err
 	}
 	if (cond == 0) {
 		exec, if_err := exec_cmd(c.then_branch, s, j)
 		if if_err != .None {
-			return 1, err
+			return -1, err
 		}
 
 		if exec == 0 {
@@ -93,7 +93,7 @@ exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int
 		}
 	}
 	if c.else_branch == nil {
-		return 1, .None
+		return -1, .None
 	}
 
 	if type_of(c.else_branch) == ^parser.IfClause {
@@ -124,7 +124,7 @@ exec_simple :: proc(
 
 	err := spawn_process(p, j)
 	if err != .None {
-		return 1, err
+		return -1, err
 	}
 
 	if p.is_first {
@@ -160,11 +160,11 @@ reap_process :: proc(pid: posix.pid_t) -> int {
 	case posix.WIFEXITED(status):
 		return int(posix.WEXITSTATUS(status))
 	case posix.WIFSIGNALED(status):
-		return 128 + int(posix.WTERMSIG(status))
+		return -128 + int(posix.WTERMSIG(status))
 	case posix.WIFSTOPPED(status):
-		return 128 + int(posix.WSTOPSIG(status))
+		return -128 + int(posix.WSTOPSIG(status))
 	case:
-		return 1
+		return -1
 	}
 }
 

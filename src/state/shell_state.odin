@@ -28,7 +28,7 @@ ShellState :: struct {
 
 
 shell_state_init :: proc(s: ^ShellState) {
-	err := virtual.arena_init_growing(&s.arena)
+	err := virtual.arena_init_growing(&s.arena) // I don't think I need as context.temp_allocator is the same thing we'll see
 	if err != nil {
 		panic("couldn't allocate memory")
 	}
