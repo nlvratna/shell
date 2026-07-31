@@ -1,7 +1,6 @@
 package parser//for a command
 
 import "core:fmt"
-import "core:mem/virtual"
 import "core:strconv"
 import "core:strings"
 
@@ -200,16 +199,12 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, ParseError) {
 
 parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 	#partial switch p.curr_token.kind {
-
 	case .LEFTPAREN:
 		return parse_subshell_cmd(p)
-
 	case .LEFTBRACE:
 		return parse_bracecmd(p)
-
 	case .FOR:
 		return parse_for_cmd(p)
-
 	case .IF:
 		return parse_if_cmd(p)
 	case .INVALID:

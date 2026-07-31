@@ -1,5 +1,6 @@
 package jobs
 
+import "core:os"
 import "core:strings"
 import "core:unicode"
 
@@ -56,6 +57,7 @@ destroy_process :: proc(p: ^Process) {
 	free(p)
 }
 
+//TODO:parameter expansion
 expand_env :: proc(s: ^state.ShellState, p: ^Process) -> (args: [dynamic]cstring) {
 	args = make([dynamic]cstring)
 	for arg in p.args {
@@ -78,11 +80,12 @@ expand_env :: proc(s: ^state.ShellState, p: ^Process) -> (args: [dynamic]cstring
 			continue
 		}
 
+		//this could contain {}
 		offset: int = idx + 1
 		for len(a) > offset && unicode.is_alpha(rune(a[offset])) {
 			offset = offset + 1
 		}
-		val, ok := s.vars[a[idx + 1:offset]] //argouldn't this storing will be a problem for a command as the output of command could be dynamic the better one would be this calling expand before executing I think
+		val, ok := s.vars[a[idx + 1:offset]]
 		replaced_string: string
 		if ok {
 			replaced_string, _ = strings.replace(a, a[idx:offset], val, -1)

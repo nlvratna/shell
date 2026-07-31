@@ -1,7 +1,6 @@
 package reader
 import "core:fmt"
 import "core:io"
-import "core:os"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
