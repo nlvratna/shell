@@ -46,7 +46,7 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 	if s.is_interactive do state.disable_raw(s)
 	defer if s.is_interactive do state.enable_raw(s)
 
-	left, err := exec_cmd(cmd, s, j)
+	status, err := exec_cmd(cmd, s, j)
 	if err != .None {
 		return ExecEvent{err = err}
 	}
@@ -56,6 +56,15 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 
 
 exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	p := new(jobs.Process)
+	jobs.init_process(p, j)
+
+	if len(j.procs) == 0 {
+		p.is_first = true
+	}
+
+	append(&j.procs, p)
+
 	#partial switch c in cmd {
 	case ^parser.IfClause:
 		return exec_if(c, s, j)
@@ -63,9 +72,41 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 		return exec_for(c, s, j)
 	case ^parser.CommandList:
 		return exec_cmdlist(c, s, j)
+	case ^parser.Pipeline:
+		return exec_pipe(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
+}
+
+exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	in_fd := posix.FD(posix.STDIN_FILENO)
+	pipe_fds: [2]posix.FD
+
+	j.is_pipe = true
+
+	for i in 0 ..< len(c.commands) {
+		cmd := c.commands[i]
+		is_last := i == len(c.commands) - 1
+
+		if !is_last {
+			if posix.pipe(&pipe_fds) != .OK do return -1, .Exec_Error
+		}
+
+		j.stdin = in_fd
+		j.stdout = is_last ? posix.STDOUT_FILENO : posix.FD(pipe_fds[1])
+		j.remove_pipe = is_last ? posix.FD(-1) : posix.FD(pipe_fds[0])
+
+		exec_cmd(cmd, s, j)
+
+		if !is_last do posix.close(pipe_fds[1])
+		if in_fd != posix.STDIN_FILENO do posix.close(in_fd)
+		if !is_last do in_fd = pipe_fds[0]
+	}
+
+	j.is_pipe = false
+
+	return wait_job(s, j), .None
 }
 
 @(private)
@@ -89,8 +130,8 @@ exec_simple :: proc(
 		return 0, .None
 	}
 
-	p := new(jobs.Process) //this should be somewhere in exec_cmd()
-	jobs.create_process(s, p, c)
+	p := j.procs[len(j.procs) - 1] //we are working with the last appended job
+	jobs.populate_process(s, p, c)
 
 	cmd_name := p.expanded_args[0]
 	if cmd_name == "break" {
@@ -102,12 +143,6 @@ exec_simple :: proc(
 		return 0, .Continue
 	}
 
-
-	if len(j.procs) == 0 {
-		p.is_first = true
-	}
-
-	append(&j.procs, p)
 
 	err := spawn_process(s, p, j)
 	if err != .None {
@@ -131,11 +166,11 @@ exec_simple :: proc(
 	posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
 
 	posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid) //handle the terminal to child
-	exit_status := reap_process(p.pid)
-	posix.tcsetpgrp(posix.STDIN_FILENO, sid) //take back the terminal
 
-	p.exit_status = exit_status
-	return exit_status, .None
+	if j.is_pipe {
+		return 0, .None
+	}
+	return wait_job(s, j), .None
 }
 
 
@@ -246,6 +281,7 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 	}
 	if pid == 0 {
 		child_setup(p, j)
+		set_redirects(p)
 		posix.execvp(p.cmd, raw_data(p.expanded_args))
 		// posix.exit(127) //may not need this command not found should not reach here I believe
 	}
@@ -253,7 +289,6 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 	return .None
 }
 
-@(private)
 child_setup :: proc(p: ^jobs.Process, j: ^jobs.Job) {
 	child_pid := posix.getpid()
 
@@ -270,6 +305,25 @@ child_setup :: proc(p: ^jobs.Process, j: ^jobs.Job) {
 	}
 
 	reset_signal()
+
+	if p.in_fd != posix.STDIN_FILENO {
+		posix.dup2(p.in_fd, posix.STDIN_FILENO)
+		posix.close(p.in_fd)
+	}
+
+	if p.out_fd != posix.STDOUT_FILENO {
+		posix.dup2(p.out_fd, posix.STDOUT_FILENO)
+		posix.close(p.out_fd)
+	}
+
+	if j.is_pipe && j.remove_pipe != -1 {
+		posix.close(j.remove_pipe)
+	}
+
+}
+
+@(private)
+set_redirects :: proc(p: ^jobs.Process) {
 
 	for r in p.redirects {
 		file_path := strings.clone_to_cstring(r.file)
@@ -300,7 +354,36 @@ child_setup :: proc(p: ^jobs.Process, j: ^jobs.Job) {
 			continue
 		}
 	}
+}
 
+@(private)
+wait_job :: proc(s: ^state.ShellState, j: ^jobs.Job) -> int {
+	if j.is_bg {
+		return 0
+	}
+
+	sid := posix.getpgrp()
+
+	posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
+	posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
+	posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid)
+
+	exit_status := 0
+	for p in j.procs {
+		if p.pid > 0 {
+			status := reap_process(p.pid)
+			p.exit_status = status
+
+			if p == j.procs[len(j.procs) - 1] {
+				exit_status = status
+			}
+		}
+	}
+
+	// 3. Take terminal control back to the shell
+	posix.tcsetpgrp(posix.STDIN_FILENO, sid)
+
+	return exit_status
 }
 
 @(private)

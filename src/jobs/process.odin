@@ -1,6 +1,5 @@
 package jobs
 
-import "core:fmt"
 import "core:strings"
 import "core:unicode"
 
@@ -23,12 +22,19 @@ Process :: struct {
 	args:          [dynamic]string,
 	expanded_args: [dynamic]cstring,
 	redirects:     [dynamic]parser.Redirect, //this might not exist clone
+	in_fd:         posix.FD,
+	out_fd:        posix.FD,
 	is_first:      bool, // is the first command in job
 	is_last:       bool, // is the last command in job
 	exit_status:   int,
 }
 
-create_process :: proc(
+init_process :: proc(p: ^Process, j: ^Job) {
+	p.in_fd = j.stdin
+	p.out_fd = j.stdout
+}
+
+populate_process :: proc(
 	s: ^state.ShellState,
 	p: ^Process,
 	cmd: ^parser.SimpleCommand,
@@ -64,6 +70,7 @@ destroy_process :: proc(p: ^Process) {
 }
 
 //TODO:parameter expansion
+//something is wrong here
 expand_env :: proc(s: ^state.ShellState, words: [dynamic]string) -> (args: [dynamic]cstring) {
 	args = make([dynamic]cstring)
 	for arg in words {
