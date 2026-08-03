@@ -11,6 +11,8 @@ import posix "core:sys/posix"
 
 EventError :: enum {
 	None,
+	Break,
+	Continue,
 	Fork_Error,
 	Env_Error,
 	Exec_Error,
@@ -33,10 +35,6 @@ ExecEvent :: struct {
 
 
 exec :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
-	return exec_list(cmd, s)
-}
-
-exec_list :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 	j := new(jobs.Job)
 	// j.command =  I don't have the original command as parser takes it so
 	// either the cmd in passed to exec event or parser has to call the execute
@@ -61,44 +59,13 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 	#partial switch c in cmd {
 	case ^parser.IfClause:
 		return exec_if(c, s, j)
+	case ^parser.ForLoop:
+		return exec_for(c, s, j)
+	case ^parser.CommandList:
+		return exec_cmdlist(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
-}
-
-
-// exec_pipeline :: proc(cmd: parser.Command, s: ^state.ShellState) -> int {
-// 	//execute a pipe line
-// }
-
-// execute :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
-// 	#partial switch c in cmd {
-// 	case:
-// 		return exec_simple(c.(^parser.SimpleCommand), s)
-// 	}
-// }
-
-exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
-	cond, err := exec_cmd(c.condition, s, j)
-	if err != .None {
-		return -1, err
-	}
-	if (cond == 0) {
-		exec_status, if_err := exec_cmd(c.then_branch, s, j)
-		if if_err != .None {
-			return -1, if_err
-		}
-		return exec_status, .None
-	}
-
-	if c.else_branch == nil {
-		return -1, .None
-	}
-
-	if type_of(c.else_branch) == ^parser.IfClause {
-		return exec_if(c.else_branch.(^parser.IfClause), s, j)
-	}
-	return exec_cmd(c.else_branch, s, j)
 }
 
 @(private)
@@ -110,9 +77,8 @@ exec_simple :: proc(
 	int,
 	EventError,
 ) {
-	if len(c.words) == 0 { 	//it would probabaly be easy if I create a Node for this like Declare/Var Expression
+	if len(c.words) == 0 {
 		if len(c.assigns) == 1 {
-			//doe this effectively mean variable
 			assign := c.assigns[0]
 			idx := strings.index_byte(assign, '=')
 			if idx == -1 do return 0, .None //this could be error
@@ -124,7 +90,17 @@ exec_simple :: proc(
 	}
 
 	p := new(jobs.Process) //this should be somewhere in exec_cmd()
-	jobs.create_process(p, c)
+	jobs.create_process(s, p, c)
+
+	cmd_name := p.expanded_args[0]
+	if cmd_name == "break" {
+		jobs.destroy_process(p)
+		return 0, .Break
+	}
+	if cmd_name == "continue" {
+		jobs.destroy_process(p)
+		return 0, .Continue
+	}
 
 
 	if len(j.procs) == 0 {
@@ -162,6 +138,89 @@ exec_simple :: proc(
 	return exit_status, .None
 }
 
+
+exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	cond, err := exec_cmd(c.condition, s, j)
+	if err != .None {
+		return -1, err
+	}
+	if (cond == 0) {
+		exec_status, if_err := exec_cmd(c.then_branch, s, j)
+		if if_err != .None {
+			return -1, if_err
+		}
+		return exec_status, .None
+	}
+
+	if c.else_branch == nil {
+		return -1, .None
+	}
+
+	if type_of(c.else_branch) == ^parser.IfClause {
+		return exec_if(c.else_branch.(^parser.IfClause), s, j)
+	}
+	return exec_cmd(c.else_branch, s, j)
+}
+
+exec_for :: proc(c: ^parser.ForLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	//add break and continue tokens and execute them
+	last_status: int
+	for i in 0 ..< len(c.items) {
+		s.vars[c.variable] = c.items[i]
+
+		status, err := exec_cmd(c.body, s, j)
+
+		last_status = status
+
+		if err == .Break {
+			break
+		}
+		if err == .Continue {
+			continue
+		}
+
+		if err != .None {
+			return status, err
+		}
+	}
+	return last_status, .None
+}
+
+exec_cmdlist :: proc(
+	c: ^parser.CommandList,
+	s: ^state.ShellState,
+	j: ^jobs.Job,
+) -> (
+	int,
+	EventError,
+) {
+	left_status, left_err := exec_cmd(c.left, s, j)
+	if left_err != .None {
+		return left_status, left_err
+	}
+
+	if c.right == nil {
+		return left_status, .None
+	}
+
+	#partial switch c.operator {
+	case .ORIF:
+		if left_status != 0 {
+			return exec_cmd(c.right, s, j)
+		}
+		return left_status, .None
+	case .ANDIF:
+		if left_status == 0 {
+			return exec_cmd(c.right, s, j)
+		}
+		return left_status, .None
+	case .SEMICOLON:
+		return exec_cmd(c.right, s, j)
+	case:
+		return left_status, .None
+	}
+}
+
 @(private)
 reap_process :: proc(pid: posix.pid_t) -> int {
 	status: c.int
@@ -187,10 +246,7 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 	}
 	if pid == 0 {
 		child_setup(p, j)
-		args := jobs.expand_env(s, p)
-		defer delete(args)
-
-		posix.execvp(p.cmd, raw_data(args))
+		posix.execvp(p.cmd, raw_data(p.expanded_args))
 		// posix.exit(127) //may not need this command not found should not reach here I believe
 	}
 	p.pid = pid

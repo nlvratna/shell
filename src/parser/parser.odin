@@ -2,7 +2,6 @@ package parser//for a command
 
 import "core:fmt"
 import "core:strconv"
-import "core:strings"
 
 Parser :: struct {
 	t:          Tokenizer,
@@ -197,6 +196,7 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, ParseError) {
 }
 
 
+//TODO:maybe a assign_word parse
 parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 	#partial switch p.curr_token.kind {
 	case .LEFTPAREN:
@@ -224,7 +224,7 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 
 	loop: for {
 		#partial switch p.curr_token.kind {
-		case .WORD:
+		case .WORD, .EQUAL:
 			word := p.curr_token.text
 			append(&cmd.words, word)
 			advance_token(p)
@@ -305,7 +305,7 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	advance_token(p)
 
 	if !match(p, []TokenKind{.IN}) {
-		msg := fmt.tprintf("Unexptected token,%s", TokenKind.IN)
+		msg := fmt.tprintf("Exptected token,%s", TokenKind.IN)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
@@ -332,7 +332,7 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	for_cmd.body = body
 
 	if !match(p, []TokenKind{.DONE}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 

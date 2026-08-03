@@ -1,6 +1,6 @@
 package jobs
 
-import "core:os"
+import "core:fmt"
 import "core:strings"
 import "core:unicode"
 
@@ -16,18 +16,23 @@ ProcessErrorType :: enum {
 
 
 Process :: struct {
-	pid:         posix.pid_t,
-	id:          int,
-	env:         map[cstring]cstring,
-	cmd:         cstring,
-	args:        []cstring,
-	redirects:   [dynamic]parser.Redirect, //this might not exist clone
-	is_first:    bool, // is the first command in job
-	is_last:     bool, // is the last command in job
-	exit_status: int,
+	pid:           posix.pid_t,
+	id:            int,
+	env:           map[cstring]cstring,
+	cmd:           cstring,
+	args:          [dynamic]string,
+	expanded_args: [dynamic]cstring,
+	redirects:     [dynamic]parser.Redirect, //this might not exist clone
+	is_first:      bool, // is the first command in job
+	is_last:       bool, // is the last command in job
+	exit_status:   int,
 }
 
-create_process :: proc(p: ^Process, cmd: ^parser.SimpleCommand) -> ProcessErrorType {
+create_process :: proc(
+	s: ^state.ShellState,
+	p: ^Process,
+	cmd: ^parser.SimpleCommand,
+) -> ProcessErrorType {
 	append(&p.redirects, ..cmd.redirects[:])
 	p.env = make(map[cstring]cstring)
 	for assign in cmd.assigns {
@@ -44,7 +49,8 @@ create_process :: proc(p: ^Process, cmd: ^parser.SimpleCommand) -> ProcessErrorT
 	}
 	append(&args, nil)
 	p.cmd = args[0]
-	p.args = args[:]
+	p.args = cmd.words
+	p.expanded_args = expand_env(s, cmd.words)
 	return nil
 }
 
@@ -58,10 +64,10 @@ destroy_process :: proc(p: ^Process) {
 }
 
 //TODO:parameter expansion
-expand_env :: proc(s: ^state.ShellState, p: ^Process) -> (args: [dynamic]cstring) {
+expand_env :: proc(s: ^state.ShellState, words: [dynamic]string) -> (args: [dynamic]cstring) {
 	args = make([dynamic]cstring)
-	for arg in p.args {
-		if arg == nil do continue
+	for arg in words {
+		if arg == "" do continue
 
 		a := string(arg)
 
@@ -76,11 +82,10 @@ expand_env :: proc(s: ^state.ShellState, p: ^Process) -> (args: [dynamic]cstring
 
 		idx := strings.index_byte(a, '$')
 		if idx == -1 {
-			append(&args, arg)
+			append(&args, strings.clone_to_cstring(a))
 			continue
 		}
 
-		//this could contain {}
 		offset: int = idx + 1
 		for len(a) > offset && unicode.is_alpha(rune(a[offset])) {
 			offset = offset + 1
