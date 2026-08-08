@@ -74,6 +74,8 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 		return exec_cmdlist(c, s, j)
 	case ^parser.Pipeline:
 		return exec_pipe(c, s, j)
+	case ^parser.WhileLoop:
+		return exec_while(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
@@ -197,29 +199,6 @@ exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int
 	return exec_cmd(c.else_branch, s, j)
 }
 
-exec_for :: proc(c: ^parser.ForLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
-	//add break and continue tokens and execute them
-	last_status: int
-	for i in 0 ..< len(c.items) {
-		s.vars[c.variable] = c.items[i]
-
-		status, err := exec_cmd(c.body, s, j)
-
-		last_status = status
-
-		if err == .Break {
-			break
-		}
-		if err == .Continue {
-			continue
-		}
-
-		if err != .None {
-			return status, err
-		}
-	}
-	return last_status, .None
-}
 
 exec_cmdlist :: proc(
 	c: ^parser.CommandList,
@@ -254,6 +233,59 @@ exec_cmdlist :: proc(
 	case:
 		return left_status, .None
 	}
+}
+
+//TODO : see if it possible to reduce the code redundancy
+exec_for :: proc(c: ^parser.ForLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	last_status: int
+	for i in 0 ..< len(c.items) {
+		s.vars[c.variable] = c.items[i]
+
+		status, err := exec_cmd(c.body, s, j)
+
+		last_status = status
+
+		if err == .Break {
+			break
+		}
+		if err == .Continue {
+			continue
+		}
+
+		if err != .None {
+			return status, err
+		}
+	}
+	return last_status, .None
+}
+
+exec_while :: proc(c: ^parser.WhileLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	last_status: int
+	for {
+		cond_stat, err := exec_cmd(c.condition, s, j)
+
+		if err != .None || cond_stat != 0 {
+			break
+		}
+
+		status, body_err := exec_cmd(c.body, s, j)
+		last_status = status
+
+		if body_err == .Break {
+			break
+		}
+
+		if body_err == .Continue {
+			continue
+		}
+
+		if body_err != .None {
+			return status, body_err
+		}
+
+	}
+
+	return last_status, .None
 }
 
 @(private)

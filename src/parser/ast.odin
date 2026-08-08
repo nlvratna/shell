@@ -155,7 +155,10 @@ print_command :: proc(cmd: Command, level: int) {
 	case ^ForLoop:
 		fmt.printf("ForLoop (var=%s, items=%v):\n", c.variable, c.items)
 		print_command(c.body, level + 1)
-
+	case ^WhileLoop:
+		fmt.println("While Loop:")
+		print_command(c.condition, level + 2)
+		print_command(c.body, level + 2)
 	case ^Subshell:
 		fmt.println("Subshell:")
 		print_command(c.body, level + 1)

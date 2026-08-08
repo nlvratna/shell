@@ -5,6 +5,7 @@ import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
+import "core:fmt"
 import "core:os"
 import posix "core:sys/posix"
 
@@ -69,14 +70,16 @@ run_interactive :: proc() {
 		parse_event := parser.parse(&p)
 		if parse_event.parse_event_type == .ErrorType {
 			//ask the user to enter the required token as bash,zsh does maybe
+			fmt.println("err in parser dummy")
 			reader.render_error(parse_event.parse_err)
 			continue
 		}
 		defer free_all(context.temp_allocator) //free the ast
 
-		// parser.print_ast(parse_event.command)
+		parser.print_ast(parse_event.command)
 		exec := execute.exec(parse_event.command, &s)
 		if exec.err != .None {
+			fmt.println("err dummy")
 			reader.render_error(exec.msg)
 			continue
 		}

@@ -113,11 +113,11 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, ParseError) {
 	for p.curr_token.kind == .SEMICOLON {
 		operator_kind := p.curr_token.kind
 
-		advance_token(p)
+		advance_token(p) //move past ;
 
 		skip_newlines(p)
-		#partial switch p.peek_token.kind {
-		case .EOF, .RIGHTPAREN, .RIGHTBRACE, .FI, .THEN, .DONE, .ELIF, .ELSE:
+		#partial switch p.curr_token.kind {
+		case .EOF, .RIGHTPAREN, .RIGHTBRACE, .FI, .THEN, .DONE, .ELIF, .ELSE, .DO:
 			return left, ParseError{err_type = .None}
 		}
 
@@ -205,6 +205,8 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 		return parse_bracecmd(p)
 	case .FOR:
 		return parse_for_cmd(p)
+	case .WHILE:
+		return parse_while_cmd(p)
 	case .IF:
 		return parse_if_cmd(p)
 	case .INVALID:
@@ -337,6 +339,37 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	}
 
 	return for_cmd, ParseError{err_type = .None}
+}
+
+parse_while_cmd :: proc(p: ^Parser) -> (^WhileLoop, ParseError) {
+	advance_token(p)
+
+	while_cmd := new(WhileLoop)
+
+	condition, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	while_cmd.condition = condition
+
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DO}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DO)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+
+	while_cmd.body, err = parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+
+	if !match(p, []TokenKind{.DONE}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DONE)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+
+	return while_cmd, ParseError{err_type = .None}
 }
 
 parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
