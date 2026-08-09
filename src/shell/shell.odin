@@ -5,7 +5,6 @@ import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
-import "core:fmt"
 import "core:os"
 import posix "core:sys/posix"
 

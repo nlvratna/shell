@@ -215,6 +215,10 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	case:
+		if p.peek_token.kind == .LEFTPAREN {
+			// return parse_func(p)
+		}
+
 		return parse_simple_cmd(p)
 	}
 }
@@ -475,6 +479,29 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
 	}
 
 	return if_clause, ParseError{err_type = .None}
+}
+
+parse_func :: proc(p: ^Parser) -> (^FuncDef, ParseError) {
+	func := new(FuncDef)
+	func.name = p.curr_token.text
+	advance_token(p) // we arrive here if we see ( so no need to check
+
+	if !match(p, []TokenKind{.RIGHTPAREN}) {
+		msg := fmt.tprintf(
+			"Unexptected token,%s;Expected %s",
+			p.curr_token.text,
+			TokenKind.RIGHTPAREN,
+		)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	skip_newlines(p)
+
+	body, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	func.body = body
+	return func, ParseError{err_type = .None}
 }
 
 parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, ParseError) {
