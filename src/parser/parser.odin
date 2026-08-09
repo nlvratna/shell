@@ -55,6 +55,7 @@ advance_token :: proc(p: ^Parser) {
 }
 
 
+//do I relly neead a array here, I don't think so
 match_kind :: proc(p: ^Parser, kinds: []TokenKind) -> bool {
 	for kind in kinds {
 		if p.curr_token.kind == kind {
@@ -196,19 +197,20 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, ParseError) {
 }
 
 
-//TODO:maybe a assign_word parse
 parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 	#partial switch p.curr_token.kind {
 	case .LEFTPAREN:
 		return parse_subshell_cmd(p)
 	case .LEFTBRACE:
 		return parse_bracecmd(p)
+	case .IF:
+		return parse_if_cmd(p)
 	case .FOR:
 		return parse_for_cmd(p)
 	case .WHILE:
 		return parse_while_cmd(p)
-	case .IF:
-		return parse_if_cmd(p)
+	case .UNTIL:
+		return parse_until_cmd(p)
 	case .INVALID:
 		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
@@ -364,6 +366,8 @@ parse_while_cmd :: proc(p: ^Parser) -> (^WhileLoop, ParseError) {
 		return nil, err
 	}
 
+	skip_newlines(p)
+
 	if !match(p, []TokenKind{.DONE}) {
 		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DONE)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
@@ -371,6 +375,37 @@ parse_while_cmd :: proc(p: ^Parser) -> (^WhileLoop, ParseError) {
 
 	return while_cmd, ParseError{err_type = .None}
 }
+
+parse_until_cmd :: proc(p: ^Parser) -> (^UntilLoop, ParseError) {
+	advance_token(p)
+
+	until_cmd := new(UntilLoop)
+
+	condition, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	until_cmd.condition = condition
+
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DO}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DO)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	until_cmd.body, err = parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DONE}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DONE)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	return until_cmd, ParseError{err_type = .None}
+}
+
 
 parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
 	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> ParseError {

@@ -76,11 +76,14 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 		return exec_pipe(c, s, j)
 	case ^parser.WhileLoop:
 		return exec_while(c, s, j)
+	case ^parser.UntilLoop:
+		return exec_until(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
 }
 
+//handle bang!
 exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
 	in_fd := posix.FD(posix.STDIN_FILENO)
 	pipe_fds: [2]posix.FD
@@ -286,6 +289,36 @@ exec_while :: proc(c: ^parser.WhileLoop, s: ^state.ShellState, j: ^jobs.Job) -> 
 	}
 
 	return last_status, .None
+}
+
+exec_until :: proc(c: ^parser.UntilLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	for {
+		cstat, err := exec_cmd(c.condition, s, j)
+
+		if cstat == 0 {
+			return cstat, .None
+		}
+
+		if err != .None {
+			break
+		}
+
+
+		status, body_err := exec_cmd(c.body, s, j)
+
+		if body_err == .Break {
+			break
+		}
+
+		if body_err == .Continue {
+			continue
+		}
+
+		if body_err != .None {
+			return status, body_err
+		}
+	}
+	return 0, .None // this is 0 as it exists when until command is satisfied
 }
 
 @(private)
