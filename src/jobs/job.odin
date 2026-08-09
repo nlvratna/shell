@@ -10,6 +10,7 @@ Job :: struct {
 	is_pipe:     bool,
 	stdin:       posix.FD,
 	stdout:      posix.FD,
+	stderr:      posix.FD,
 	remove_pipe: posix.FD,
 }
 

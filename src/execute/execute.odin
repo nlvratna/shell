@@ -38,8 +38,11 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState) -> ExecEvent {
 	j := new(jobs.Job)
 	// j.command =  I don't have the original command as parser takes it so
 	// either the cmd in passed to exec event or parser has to call the execute
-	// so original string exists or parser has to return the string too as the
+	// so original string exists or parser has to return the string too as th
 	// string might have error
+	j.stdin = posix.FD(posix.STDIN_FILENO)
+	j.stdout = posix.FD(posix.STDOUT_FILENO)
+	j.stderr = posix.FD(posix.STDERR_FILENO)
 	j.procs = make([dynamic]^jobs.Process)
 	defer delete(j.procs)
 
