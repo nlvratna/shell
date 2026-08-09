@@ -5,6 +5,7 @@ import "core:strconv"
 
 Parser :: struct {
 	t:          Tokenizer,
+	cmd_string: string,
 	curr_token: Token,
 	peek_token: Token,
 }
@@ -30,16 +31,18 @@ ParserEvent :: struct {
 	parse_event_type: ParseEventType,
 	// program:          Program, // is this the better option?
 	command:          Command, //should I take this to handle errors in execution
+	cmd_string:       string,
 	parse_err:        string,
 }
 
 
-parser_init :: proc(p: ^Parser, data: string) {
+parser_init :: proc(p: ^Parser, cmd_string: string) {
 	t: Tokenizer
-	tokenizer_init(&t, data)
+	tokenizer_init(&t, cmd_string)
 
 	p^ = Parser {
-		t = t,
+		t          = t,
+		cmd_string = cmd_string,
 	}
 
 	//setup both current token and peek token
@@ -101,7 +104,7 @@ parse :: proc(p: ^Parser) -> ParserEvent {
 	}
 	skip_newlines(p)
 
-	return ParserEvent{parse_event_type = .Ast_Ready, command = cmd}
+	return ParserEvent{parse_event_type = .Ast_Ready, command = cmd, cmd_string = p.cmd_string}
 }
 
 

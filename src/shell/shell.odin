@@ -32,7 +32,7 @@ run_not_interactive :: proc(data: string) {
 	if parser_event.parse_event_type == .ErrorType {
 		reader.render_error(parser_event.parse_err)
 	}
-	execute.exec(parser_event.command, &s)
+	execute.exec(parser_event.command, &s, parser_event.cmd_string)
 }
 
 
@@ -75,7 +75,7 @@ run_interactive :: proc() {
 		defer free_all(context.temp_allocator) //free the ast
 
 		// parser.print_ast(parse_event.command)
-		exec := execute.exec(parse_event.command, &s)
+		exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
 		if exec.err != .None {
 			reader.render_error(exec.msg)
 			continue
