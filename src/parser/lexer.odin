@@ -169,7 +169,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 			kind = .LESS
 		}
 	case utf8.RUNE_EOF, '\x00':
-		kind = .EOF
+		return new_token("EOF", .EOF)
 	case:
 		//everything else is a string in a shell
 		if ch == '\'' {

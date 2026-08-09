@@ -175,6 +175,32 @@ test_lexer :: proc(t: ^testing.T) {
 				{text = "EOF", kind = .EOF},
 			},
 		},
+		{
+			name = "Basic Case Test",
+			input = " case $ANSWER in y | Y ) echo \"Continuing...\" ;; n | N ) echo \"Aborted.\" exit 1 ;;  esac",
+			expected = []Token {
+				{text = "case", kind = .CASE},
+				{text = "$ANSWER", kind = .WORD},
+				{text = "in", kind = .IN},
+				{text = "y", kind = .WORD},
+				{text = "|", kind = .PIPE},
+				{text = "Y", kind = .WORD},
+				{text = ")", kind = .RIGHTPAREN},
+				{text = "echo", kind = .WORD},
+				{text = "\"Continuing...\"", kind = .WORD},
+				{text = ";;", kind = .DSEMI},
+				{text = "n", kind = .WORD},
+				{text = "|", kind = .PIPE},
+				{text = "N", kind = .WORD},
+				{text = ")", kind = .RIGHTPAREN},
+				{text = "echo", kind = .WORD},
+				{text = "\"Aborted.\"", kind = .WORD},
+				{text = "exit", kind = .WORD},
+				{text = "1", kind = .WORD},
+				{text = ";;", kind = .DSEMI},
+				{text = "esac", kind = .ESAC},
+			},
+		},
 	}
 
 	for tc in tests {
