@@ -51,6 +51,7 @@ TokenKind :: enum {
 	LEFTBRACE,
 	RIGHTBRACE,
 	BANG,
+	BANGEQ,
 }
 
 Token :: struct {

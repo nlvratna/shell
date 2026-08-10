@@ -134,7 +134,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 	case '}':
 		kind = .RIGHTBRACE
 	case '!':
-		kind = .BANG
+		kind = match(t, '=') ? .BANGEQ : .BANG
 	case '=':
 		kind = .EQUAL
 	case ';':

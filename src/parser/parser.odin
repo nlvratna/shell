@@ -257,7 +257,7 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 
 	loop: for {
 		#partial switch p.curr_token.kind {
-		case .WORD, .EQUAL:
+		case .WORD, .EQUAL, .BANGEQ:
 			word := p.curr_token.text
 			append(&cmd.words, word)
 			advance_token(p)

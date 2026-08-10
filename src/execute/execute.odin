@@ -115,7 +115,14 @@ exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (i
 
 	j.is_pipe = false
 
-	return wait_job(s, j), .None
+	status := wait_job(s, j)
+
+	if c.bang {
+		if status == 0 do status = 1
+		else do status = 1
+	}
+	return status, .None
+
 }
 
 @(private)
