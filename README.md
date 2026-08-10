@@ -10,6 +10,12 @@ This project implements core shell mechanics including system binary execution, 
 odin run src
 ```
 
+
+
+## TODO
+--[] signal handling
+--[] expansions - variable expansion,parametric expansion,arthimetic expansion
+
 ## Acknowledgments
 
 * **[Crafting Interpreters](https://craftinginterpreters.com/)** (Robert Nystrom) & **[Writing An Interpreter in Go](https://interpreterbook.com/)** (Thorsten Ball): AST structure and recursive-descent parsing theory.
