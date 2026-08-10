@@ -80,6 +80,8 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 		return exec_subshell(c, s, j)
 	case ^parser.BraceGroup:
 		return exec_brace(c, s, j)
+	case ^parser.RedirectWrap:
+		return exec_redirects(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
@@ -382,6 +384,30 @@ exec_subshell :: proc(
 	return status, .None
 }
 
+exec_redirects :: proc(
+	c: ^parser.RedirectWrap,
+	s: ^state.ShellState,
+	j: ^jobs.Job,
+) -> (
+	int,
+	EventError,
+) {
+	stdin := posix.dup(posix.STDIN_FILENO)
+	stdout := posix.dup(posix.STDOUT_FILENO)
+
+	set_redirects(c.redirects)
+
+	status, err := exec_cmd(c.command, s, j)
+
+	posix.dup2(stdin, posix.STDIN_FILENO)
+	posix.dup2(stdout, posix.STDOUT_FILENO)
+
+	posix.close(stdin)
+	posix.close(stdout)
+
+	return status, err
+}
+
 @(private)
 reap_process :: proc(pid: posix.pid_t) -> int {
 	status: c.int
@@ -407,7 +433,12 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 	}
 	if pid == 0 {
 		child_setup(p, j)
-		set_redirects(p)
+		set_redirects(p.redirects)
+		for k, v in p.env {
+			if posix.setenv(k, v, true) != .OK {
+				continue
+			}
+		}
 		posix.execvp(p.cmd, raw_data(p.expanded_args))
 		// posix.exit(127) //may not need this command not found should not reach here I believe
 	}
@@ -449,9 +480,9 @@ child_setup :: proc(p: ^jobs.Process, j: ^jobs.Job) {
 }
 
 @(private)
-set_redirects :: proc(p: ^jobs.Process) {
+set_redirects :: proc(redirects: [dynamic]parser.Redirect) {
 
-	for r in p.redirects {
+	for r in redirects {
 		file_path := strings.clone_to_cstring(r.file)
 		defer delete(file_path)
 
@@ -475,11 +506,6 @@ set_redirects :: proc(p: ^jobs.Process) {
 		}
 	}
 
-	for k, v in p.env {
-		if posix.setenv(k, v, true) != .OK {
-			continue
-		}
-	}
 }
 
 @(private)

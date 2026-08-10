@@ -20,6 +20,12 @@ Command :: union {
 	^IfClause,
 	^CaseClause,
 	^FuncDef,
+	^RedirectWrap,
+}
+
+RedirectWrap :: struct {
+	command:   Command,
+	redirects: [dynamic]Redirect,
 }
 
 Redirect :: struct {
