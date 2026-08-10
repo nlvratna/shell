@@ -46,6 +46,7 @@ run_interactive :: proc() {
 	r: reader.ReaderState
 	reader.reader_init(&r, s.prompt)
 
+	reader.clear_screen()
 	for s.is_running {
 		input_event := reader.read_line(&r, os.to_stream(os.stdin))
 		defer reader.clear_buf(&r) //works even when an error occurs
