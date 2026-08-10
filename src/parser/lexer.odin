@@ -230,6 +230,8 @@ is_shell_operator :: proc(c: rune) -> bool {
 	switch c {
 	case '|', '&', ';', '<', '>':
 		return true
+	case ')', '}', ']':
+		return true
 	case:
 		return false
 	}
