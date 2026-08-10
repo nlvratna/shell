@@ -13,8 +13,8 @@ odin run src
 
 
 ## TODO
---[] signal handling
---[] expansions - variable expansion,parametric expansion,arthimetic expansion
+- [ ] signal handling
+- [ ] expansions - variable expansion,parametric expansion,arthimetic expansion
 
 ## Acknowledgments
 
