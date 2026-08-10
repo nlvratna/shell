@@ -74,6 +74,8 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 		return exec_while(c, s, j)
 	case ^parser.UntilLoop:
 		return exec_until(c, s, j)
+	case ^parser.CaseClause:
+		return exec_case(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
@@ -315,6 +317,29 @@ exec_until :: proc(c: ^parser.UntilLoop, s: ^state.ShellState, j: ^jobs.Job) -> 
 		}
 	}
 	return 0, .None // this is 0 as it exists when until command is satisfied
+}
+
+//TODO : expansion find a way for it
+exec_case :: proc(c: ^parser.CaseClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	word := c.word
+
+	if strings.has_prefix(word, "\"") && strings.has_suffix(word, "\"") {
+		word = word[1:len(word) - 1]
+	}
+
+	if val, ok := s.vars[c.word]; ok {
+		word = val
+	}
+	for item in c.items {
+		for p in item.patterns {
+			if word == p {
+				return exec_cmd(item.body, s, j)
+			} else if p == "*" {
+				return exec_cmd(item.body, s, j)
+			}
+		}
+	}
+	return 1, .None
 }
 
 @(private)

@@ -223,8 +223,8 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 		if p.peek_token.kind == .LEFTPAREN {
 			return parse_func(p)
 		}
+		return parse_simple_cmd(p)
 	}
-	return parse_simple_cmd(p)
 }
 
 parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
@@ -538,7 +538,7 @@ parse_case :: proc(p: ^Parser) -> (^CaseClause, ParseError) {
 
 			if !match(p, []TokenKind{.PIPE}) && p.curr_token.kind != .RIGHTPAREN {
 				msg := fmt.tprintf(
-					"Unexptected token,%s;Expected %s",
+					"Unexptected token:%s;Expected:%s",
 					p.curr_token.text,
 					TokenKind.RIGHTPAREN,
 				)
@@ -550,6 +550,7 @@ parse_case :: proc(p: ^Parser) -> (^CaseClause, ParseError) {
 		if err.err_type != .None {
 			return nil, err
 		}
+		item.body = body
 		if !match(p, []TokenKind{.DSEMI}) {
 			msg := fmt.tprintf(
 				"Unexptected token,%s;Expected %s",
@@ -561,7 +562,10 @@ parse_case :: proc(p: ^Parser) -> (^CaseClause, ParseError) {
 		skip_newlines(p)
 		append(&case_cmd.items, item)
 	}
-
+	if !match(p, []TokenKind{.ESAC}) {
+		msg := fmt.tprintf("Expected token:%s", TokenKind.ESAC)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
 
 	return case_cmd, ParseError{err_type = .None}
 }

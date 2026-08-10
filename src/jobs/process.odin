@@ -70,7 +70,6 @@ destroy_process :: proc(p: ^Process) {
 }
 
 //TODO:parameter expansion
-//something is wrong here
 expand_env :: proc(s: ^state.ShellState, words: [dynamic]string) -> (args: [dynamic]cstring) {
 	args = make([dynamic]cstring)
 	for arg in words {
