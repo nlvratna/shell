@@ -214,16 +214,17 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 		return parse_while_cmd(p)
 	case .UNTIL:
 		return parse_until_cmd(p)
+	case .CASE:
+		return parse_case(p)
 	case .INVALID:
 		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	case:
 		if p.peek_token.kind == .LEFTPAREN {
-			// return parse_func(p)
+			return parse_func(p)
 		}
-
-		return parse_simple_cmd(p)
 	}
+	return parse_simple_cmd(p)
 }
 
 parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
@@ -505,6 +506,64 @@ parse_func :: proc(p: ^Parser) -> (^FuncDef, ParseError) {
 	}
 	func.body = body
 	return func, ParseError{err_type = .None}
+}
+
+parse_case :: proc(p: ^Parser) -> (^CaseClause, ParseError) {
+	advance_token(p)
+
+	case_cmd := new(CaseClause)
+
+	if p.curr_token.kind != .WORD {
+		msg := fmt.tprintf("Unexptected token,%s;", p.curr_token.kind)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+
+	case_cmd.word = p.curr_token.text
+	advance_token(p)
+
+	if !match(p, []TokenKind{.IN}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.IN)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	skip_newlines(p)
+
+	for p.curr_token.kind != .ESAC {
+		item: CaseItem
+		item.patterns = make([dynamic]string)
+
+		//this could be infinite if right paren is not present
+		for p.curr_token.kind != .RIGHTPAREN {
+			append(&item.patterns, p.curr_token.text)
+			advance_token(p)
+
+			if !match(p, []TokenKind{.PIPE}) && p.curr_token.kind != .RIGHTPAREN {
+				msg := fmt.tprintf(
+					"Unexptected token,%s;Expected %s",
+					p.curr_token.text,
+					TokenKind.RIGHTPAREN,
+				)
+				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+			}
+		}
+		advance_token(p) //move past )
+		body, err := parse_cmdlist(p)
+		if err.err_type != .None {
+			return nil, err
+		}
+		if !match(p, []TokenKind{.DSEMI}) {
+			msg := fmt.tprintf(
+				"Unexptected token,%s;Expected %s",
+				p.curr_token.text,
+				TokenKind.DSEMI,
+			)
+			return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+		}
+		skip_newlines(p)
+		append(&case_cmd.items, item)
+	}
+
+
+	return case_cmd, ParseError{err_type = .None}
 }
 
 parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, ParseError) {

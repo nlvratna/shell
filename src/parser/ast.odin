@@ -78,7 +78,7 @@ IfClause :: struct {
 }
 
 CaseItem :: struct {
-	patterns: []string,
+	patterns: [dynamic]string,
 	body:     Command,
 }
 
@@ -165,6 +165,15 @@ print_command :: proc(cmd: Command, level: int) {
 		fmt.println("Until Loop:")
 		print_command(c.condition, level + 2)
 		print_command(c.body, level + 2)
+
+	case ^CaseClause:
+		fmt.printf("Case Clause (word=%s):\n", c.word)
+
+		for item in c.items {
+			print_indent(level + 1)
+			fmt.printf("Patterns: %v\n", item.patterns)
+			print_command(item.body, level + 2)
+		}
 
 	case ^Subshell:
 		fmt.println("Subshell:")
