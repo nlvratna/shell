@@ -76,6 +76,10 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 		return exec_until(c, s, j)
 	case ^parser.CaseClause:
 		return exec_case(c, s, j)
+	case ^parser.Subshell:
+		return exec_subshell(c, s, j)
+	case ^parser.BraceGroup:
+		return exec_brace(c, s, j)
 	case:
 		return exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
@@ -340,6 +344,42 @@ exec_case :: proc(c: ^parser.CaseClause, s: ^state.ShellState, j: ^jobs.Job) -> 
 		}
 	}
 	return 1, .None
+}
+
+exec_brace :: proc(
+	c: ^parser.BraceGroup,
+	s: ^state.ShellState,
+	j: ^jobs.Job,
+) -> (
+	int,
+	EventError,
+) {
+	return exec_cmd(c.body, s, j)
+}
+
+exec_subshell :: proc(
+	c: ^parser.Subshell,
+	s: ^state.ShellState,
+	j: ^jobs.Job,
+) -> (
+	int,
+	EventError,
+) {
+	pid := posix.fork()
+
+	if pid == -1 {
+		return -1, .Fork_Error
+	}
+
+	if pid == 0 {
+		status, _ := exec_cmd(c.body, s, j)
+
+		posix.exit(i32(status))
+	}
+
+	status := reap_process(pid)
+
+	return status, .None
 }
 
 @(private)
