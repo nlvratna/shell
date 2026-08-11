@@ -51,15 +51,9 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 }
 
 
+//Previous BUG:early call of new process before a command is executed creates a set of different groups for every process instead of all of them logically needing to be in the process group
+//FIX:don't create process here as the first cmd is not doing anything until the actual command is found
 exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
-	p := new(jobs.Process)
-	jobs.init_process(p, j)
-
-	if len(j.procs) == 0 {
-		p.is_first = true
-	}
-
-	append(&j.procs, p)
 
 	#partial switch c in cmd {
 	case ^parser.IfClause:
@@ -118,8 +112,7 @@ exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (i
 	status := wait_job(s, j)
 
 	if c.bang {
-		if status == 0 do status = 1
-		else do status = 1
+		status = status == 0 ? 1 : 0
 	}
 	return status, .None
 
@@ -146,7 +139,16 @@ exec_simple :: proc(
 		return 0, .None
 	}
 
-	p := j.procs[len(j.procs) - 1] //we are working with the last appended job
+
+	p := new(jobs.Process)
+	jobs.init_process(p, j)
+
+	if len(j.procs) == 0 {
+		p.is_first = true
+	}
+
+	append(&j.procs, p)
+
 	jobs.populate_process(s, p, c)
 
 	cmd_name := p.expanded_args[0]
@@ -174,7 +176,6 @@ exec_simple :: proc(
 		return 0, .None
 	}
 
-	sid := posix.getpgrp()
 	posix.setpgid(p.pid, j.pgid) //place the child in the job process group
 
 	//Ignore terminal input and output so shell can take back the control
@@ -447,7 +448,7 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 			}
 		}
 		posix.execvp(p.cmd, raw_data(p.expanded_args))
-		// posix.exit(127) //may not need this command not found should not reach here I believe
+		posix.exit(127)
 	}
 	p.pid = pid
 	return .None
