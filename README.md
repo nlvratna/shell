@@ -14,7 +14,10 @@ odin run src
 
 ## TODO
 - [ ] signal handling
-- [ ] expansions - variable expansion,parametric expansion,arthimetic expansion
+- [ ] expansions - variable expansion,parametric expansion,arthimetic expansion,glob
+- [ ] builtins
+- [ ] history
+- [ ] support for incomplete command
 
 ## Acknowledgments
 
