@@ -18,6 +18,7 @@ TokenKind :: enum {
 	ANDIF,
 	ORIF,
 
+
 	// Redirections
 	LESS,
 	GREATER,
@@ -50,6 +51,7 @@ TokenKind :: enum {
 	LEFTBRACE,
 	RIGHTBRACE,
 	BANG,
+	BANGEQ,
 }
 
 Token :: struct {

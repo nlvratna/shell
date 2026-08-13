@@ -20,6 +20,12 @@ Command :: union {
 	^IfClause,
 	^CaseClause,
 	^FuncDef,
+	^RedirectWrap,
+}
+
+RedirectWrap :: struct {
+	command:   Command,
+	redirects: [dynamic]Redirect,
 }
 
 Redirect :: struct {
@@ -27,6 +33,7 @@ Redirect :: struct {
 	file: string,
 	fd:   int,
 }
+
 
 SimpleCommand :: struct {
 	assigns:   [dynamic]string,
@@ -154,6 +161,25 @@ print_command :: proc(cmd: Command, level: int) {
 	case ^ForLoop:
 		fmt.printf("ForLoop (var=%s, items=%v):\n", c.variable, c.items)
 		print_command(c.body, level + 1)
+
+	case ^WhileLoop:
+		fmt.println("While Loop:")
+		print_command(c.condition, level + 2)
+		print_command(c.body, level + 2)
+
+	case ^UntilLoop:
+		fmt.println("Until Loop:")
+		print_command(c.condition, level + 2)
+		print_command(c.body, level + 2)
+
+	case ^CaseClause:
+		fmt.printf("Case Clause (word=%s):\n", c.word)
+
+		for item in c.items {
+			print_indent(level + 1)
+			fmt.printf("Patterns: %v\n", item.patterns)
+			print_command(item.body, level + 2)
+		}
 
 	case ^Subshell:
 		fmt.println("Subshell:")

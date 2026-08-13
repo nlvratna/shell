@@ -1,11 +1,11 @@
-package parser
+package parser//for a command
 
 import "core:fmt"
 import "core:strconv"
-import "core:strings"
 
 Parser :: struct {
 	t:          Tokenizer,
+	cmd_string: string,
 	curr_token: Token,
 	peek_token: Token,
 }
@@ -31,16 +31,18 @@ ParserEvent :: struct {
 	parse_event_type: ParseEventType,
 	// program:          Program, // is this the better option?
 	command:          Command, //should I take this to handle errors in execution
+	cmd_string:       string,
 	parse_err:        string,
 }
 
 
-parser_init :: proc(p: ^Parser, data: string) {
+parser_init :: proc(p: ^Parser, cmd_string: string) {
 	t: Tokenizer
-	tokenizer_init(&t, data)
+	tokenizer_init(&t, cmd_string)
 
 	p^ = Parser {
-		t = t,
+		t          = t,
+		cmd_string = cmd_string,
 	}
 
 	//setup both current token and peek token
@@ -56,6 +58,7 @@ advance_token :: proc(p: ^Parser) {
 }
 
 
+//do I relly neead a array here, I don't think so
 match_kind :: proc(p: ^Parser, kinds: []TokenKind) -> bool {
 	for kind in kinds {
 		if p.curr_token.kind == kind {
@@ -94,13 +97,14 @@ parse :: proc(p: ^Parser) -> ParserEvent {
 	skip_newlines(p)
 	if p.curr_token.kind == .EOF {
 	}
+	context.allocator = context.temp_allocator //is this good?
 	cmd, err := parse_cmdlist(p)
 	if err.err_type != .None {
 		return ParserEvent{parse_err = err.msg, parse_event_type = .ErrorType}
 	}
 	skip_newlines(p)
 
-	return ParserEvent{parse_event_type = .Ast_Ready, command = cmd}
+	return ParserEvent{parse_event_type = .Ast_Ready, command = cmd, cmd_string = p.cmd_string}
 }
 
 
@@ -113,11 +117,11 @@ parse_cmdlist :: proc(p: ^Parser) -> (Command, ParseError) {
 	for p.curr_token.kind == .SEMICOLON {
 		operator_kind := p.curr_token.kind
 
-		advance_token(p)
+		advance_token(p) //move past ;
 
 		skip_newlines(p)
-		#partial switch p.peek_token.kind {
-		case .EOF, .RIGHTPAREN, .RIGHTBRACE, .FI, .THEN, .DONE, .ELIF, .ELSE:
+		#partial switch p.curr_token.kind {
+		case .EOF, .RIGHTPAREN, .RIGHTBRACE, .FI, .THEN, .DONE, .ELIF, .ELSE, .DO:
 			return left, ParseError{err_type = .None}
 		}
 
@@ -197,25 +201,51 @@ parse_pipeline :: proc(p: ^Parser) -> (Command, ParseError) {
 
 
 parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
+	cmd: Command
+	err: ParseError
 	#partial switch p.curr_token.kind {
-
 	case .LEFTPAREN:
-		return parse_subshell_cmd(p)
-
+		cmd, err = parse_subshell_cmd(p)
 	case .LEFTBRACE:
-		return parse_bracecmd(p)
-
-	case .FOR:
-		return parse_for_cmd(p)
-
+		cmd, err = parse_bracecmd(p)
 	case .IF:
-		return parse_if_cmd(p)
+		cmd, err = parse_if_cmd(p)
+	case .FOR:
+		cmd, err = parse_for_cmd(p)
+	case .WHILE:
+		cmd, err = parse_while_cmd(p)
+	case .UNTIL:
+		cmd, err = parse_until_cmd(p)
+	case .CASE:
+		cmd, err = parse_case(p)
 	case .INVALID:
 		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	case:
-		return parse_simple_cmd(p)
+		if p.peek_token.kind == .LEFTPAREN {
+			cmd, err = parse_func(p)
+		} else {
+			cmd, err = parse_simple_cmd(p)
+		}
 	}
+
+
+	if p.curr_token.kind == .LESS ||
+	   p.curr_token.kind == .GREATER ||
+	   p.curr_token.kind == .DGREAT ||
+	   p.curr_token.kind == .IONUMBER {
+		redirect_wrap := new(RedirectWrap)
+
+		redirect_wrap.command = cmd
+		redirects, err := parse_redirects(p)
+		if err.err_type != .None {
+			return nil, err
+		}
+		redirect_wrap.redirects = redirects
+
+		return redirect_wrap, ParseError{err_type = .None}
+	}
+	return cmd, err
 }
 
 parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
@@ -227,52 +257,21 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 
 	loop: for {
 		#partial switch p.curr_token.kind {
-		case .WORD:
+		case .WORD, .EQUAL, .BANGEQ:
 			word := p.curr_token.text
-			if strings.has_prefix(word, "\"") && strings.has_suffix(word, "\"") {
-				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
-			}
-			if strings.has_prefix(word, "'") && strings.has_suffix(word, "'") {
-				word = p.curr_token.text[1:len(p.curr_token.text) - 1]
-			}
 			append(&cmd.words, word)
 			advance_token(p)
 		case .ASSIGNMENT_WORD:
 			append(&cmd.assigns, p.curr_token.text)
 			advance_token(p)
 		case .LESS, .GREATER, .DGREAT, .IONUMBER:
-			fd := -1
-			if p.curr_token.kind == .IONUMBER {
-				fd, _ = strconv.parse_int(p.curr_token.text)
-				advance_token(p)
+			redirects, err := parse_redirects(p)
+			if err.err_type != .None {
+				return nil, err
 			}
-
-			if p.curr_token.kind != .LESS &&
-			   p.curr_token.kind != .GREATER &&
-			   p.curr_token.kind != .DGREAT {
-				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
-				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+			for r in redirects {
+				append(&cmd.redirects, r)
 			}
-
-			operator := p.curr_token.kind
-
-			if fd == -1 {
-				fd = 0 if operator == .LESS else 1
-			}
-			advance_token(p)
-
-			if p.curr_token.kind != .WORD {
-				msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
-				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
-			}
-			redirect := Redirect {
-				kind = operator,
-				file = p.curr_token.text,
-				fd   = fd,
-			}
-
-			append(&cmd.redirects, redirect)
-			advance_token(p)
 		case .AMPERSAND:
 			cmd.is_bg = true
 			advance_token(p)
@@ -307,14 +306,14 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	for_cmd := new(ForLoop)
 
 	if p.curr_token.kind != .WORD {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", TokenKind.WORD)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 	for_cmd.variable = p.curr_token.text
 	advance_token(p)
 
 	if !match(p, []TokenKind{.IN}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Exptected token,%s", TokenKind.IN)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
@@ -329,7 +328,7 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	}
 	skip_newlines(p)
 	if !match(p, []TokenKind{.DO}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", TokenKind.DO)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 	skip_newlines(p)
@@ -341,12 +340,80 @@ parse_for_cmd :: proc(p: ^Parser) -> (^ForLoop, ParseError) {
 	for_cmd.body = body
 
 	if !match(p, []TokenKind{.DONE}) {
-		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text, true)
+		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
 		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
 	}
 
 	return for_cmd, ParseError{err_type = .None}
 }
+
+parse_while_cmd :: proc(p: ^Parser) -> (^WhileLoop, ParseError) {
+	advance_token(p)
+
+	while_cmd := new(WhileLoop)
+
+	condition, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	while_cmd.condition = condition
+
+	match(p, []TokenKind{.SEMICOLON})
+
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DO}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DO)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	skip_newlines(p)
+
+	while_cmd.body, err = parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+
+	match(p, []TokenKind{.SEMICOLON})
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DONE}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DONE)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+
+	return while_cmd, ParseError{err_type = .None}
+}
+
+parse_until_cmd :: proc(p: ^Parser) -> (^UntilLoop, ParseError) {
+	advance_token(p)
+
+	until_cmd := new(UntilLoop)
+
+	condition, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	until_cmd.condition = condition
+
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DO}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DO)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	until_cmd.body, err = parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	skip_newlines(p)
+
+	if !match(p, []TokenKind{.DONE}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.DONE)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	return until_cmd, ParseError{err_type = .None}
+}
+
 
 parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
 	parse_if :: proc(p: ^Parser, if_cmd: ^IfClause) -> ParseError {
@@ -418,6 +485,91 @@ parse_if_cmd :: proc(p: ^Parser) -> (^IfClause, ParseError) {
 	return if_clause, ParseError{err_type = .None}
 }
 
+parse_func :: proc(p: ^Parser) -> (^FuncDef, ParseError) {
+	func := new(FuncDef)
+	func.name = p.curr_token.text
+	advance_token(p) // we arrive here if we see ( so no need to check
+
+	if !match(p, []TokenKind{.RIGHTPAREN}) {
+		msg := fmt.tprintf(
+			"Unexptected token,%s;Expected %s",
+			p.curr_token.text,
+			TokenKind.RIGHTPAREN,
+		)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	skip_newlines(p)
+
+	body, err := parse_cmdlist(p)
+	if err.err_type != .None {
+		return nil, err
+	}
+	func.body = body
+	return func, ParseError{err_type = .None}
+}
+
+parse_case :: proc(p: ^Parser) -> (^CaseClause, ParseError) {
+	advance_token(p)
+
+	case_cmd := new(CaseClause)
+
+	if p.curr_token.kind != .WORD {
+		msg := fmt.tprintf("Unexptected token,%s;", p.curr_token.kind)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+
+	case_cmd.word = p.curr_token.text
+	advance_token(p)
+
+	if !match(p, []TokenKind{.IN}) {
+		msg := fmt.tprintf("Unexptected token,%s;Expected %s", p.curr_token.text, TokenKind.IN)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+	skip_newlines(p)
+
+	for p.curr_token.kind != .ESAC {
+		item: CaseItem
+		item.patterns = make([dynamic]string)
+
+		//this could be infinite if right paren is not present
+		for p.curr_token.kind != .RIGHTPAREN {
+			append(&item.patterns, p.curr_token.text)
+			advance_token(p)
+
+			if !match(p, []TokenKind{.PIPE}) && p.curr_token.kind != .RIGHTPAREN {
+				msg := fmt.tprintf(
+					"Unexptected token:%s;Expected:%s",
+					p.curr_token.text,
+					TokenKind.RIGHTPAREN,
+				)
+				return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+			}
+		}
+		advance_token(p) //move past )
+		body, err := parse_cmdlist(p)
+		if err.err_type != .None {
+			return nil, err
+		}
+		item.body = body
+		if !match(p, []TokenKind{.DSEMI}) {
+			msg := fmt.tprintf(
+				"Unexptected token,%s;Expected %s",
+				p.curr_token.text,
+				TokenKind.DSEMI,
+			)
+			return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+		}
+		skip_newlines(p)
+		append(&case_cmd.items, item)
+	}
+	if !match(p, []TokenKind{.ESAC}) {
+		msg := fmt.tprintf("Expected token:%s", TokenKind.ESAC)
+		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+	}
+
+	return case_cmd, ParseError{err_type = .None}
+}
+
 parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, ParseError) {
 	advance_token(p)
 
@@ -435,5 +587,50 @@ parse_bracecmd :: proc(p: ^Parser) -> (^BraceGroup, ParseError) {
 	}
 
 	return b, ParseError{err_type = .None}
+}
+
+parse_redirects :: proc(p: ^Parser) -> ([dynamic]Redirect, ParseError) {
+	redirects := make([dynamic]Redirect)
+
+	for p.curr_token.kind == .LESS ||
+	    p.curr_token.kind == .DGREAT ||
+	    p.curr_token.kind == .IONUMBER ||
+	    p.curr_token.kind == .GREATER {
+
+		fd := -1
+		if p.curr_token.kind == .IONUMBER {
+			fd, _ = strconv.parse_int(p.curr_token.text)
+			advance_token(p)
+		}
+
+		if p.curr_token.kind != .LESS &&
+		   p.curr_token.kind != .GREATER &&
+		   p.curr_token.kind != .DGREAT {
+			msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
+			return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+		}
+
+		operator := p.curr_token.kind
+
+		if fd == -1 {
+			fd = 0 if operator == .LESS else 1
+		}
+		advance_token(p)
+
+		if p.curr_token.kind != .WORD {
+			msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
+			return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+		}
+		redirect := Redirect {
+			kind = operator,
+			file = p.curr_token.text,
+			fd   = fd,
+		}
+
+		append(&redirects, redirect)
+		advance_token(p)
+
+	}
+	return redirects, ParseError{err_type = .None}
 }
 

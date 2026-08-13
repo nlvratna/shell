@@ -8,11 +8,13 @@ import "core:os"
 
 @(private = "file")
 out_stream: io.Stream
+err_stream: io.Stream
 
 @(init)
 set_stream :: proc "contextless" () {
 	context = runtime.default_context()
 	out_stream = os.to_stream(os.stdout)
+	err_stream = os.to_stream(os.stderr)
 }
 
 
@@ -35,7 +37,7 @@ render_bytes :: proc(data: []byte) {
 
 render_error :: proc(msg: string) {
 	err := fmt.tprintf("%s %s0m\r\n", msg, CSI)
-	handle_render(transmute([]byte)err)
+	io.write(err_stream, transmute([]u8)err)
 }
 
 @(private = "file")

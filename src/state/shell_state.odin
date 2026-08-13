@@ -3,7 +3,6 @@ package state
 import "core:fmt"
 import "core:os"
 
-import "core:mem/virtual"
 import posix "core:sys/posix"
 
 
@@ -15,7 +14,7 @@ TermState :: struct {
 }
 
 ShellState :: struct {
-	arena:            virtual.Arena,
+	vars:             map[string]string,
 	binaries:         [dynamic]string,
 	builtins:         map[string]BuiltinProc,
 	is_running:       bool,
@@ -30,10 +29,6 @@ ShellState :: struct {
 
 
 shell_state_init :: proc(s: ^ShellState) {
-	err := virtual.arena_init_growing(&s.arena)
-	if err != nil {
-		panic("couldn't allocate memory")
-	}
 	s.is_running = true
 	s.prompt = "$ "
 
@@ -43,19 +38,17 @@ shell_state_init :: proc(s: ^ShellState) {
 	} else {
 		fmt.println("Error is here")
 	}
-
-	s.bg_processes = make(map[int]posix.pid_t)
+	s.vars = make(map[string]string)
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
 	s.builtins = make(map[string]BuiltinProc)
 
 
-	result := posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &s.termios)
+	result := posix.tcgetattr(posix.STDIN_FILENO, &s.termios)
 	assert(result == .OK)
 }
 
 shell_state_destroy :: proc(s: ^ShellState) {
-	virtual.arena_destroy(&s.arena)
 	delete(s.binaries)
 	delete(s.builtins)
 }

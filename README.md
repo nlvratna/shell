@@ -2,13 +2,22 @@
 
 A minimal POSIX shell written in Odin. 
 
-This project implements core shell mechanics including system binary execution, standard I/O redirection, and background job control. The execution engine uses a frame-based virtual arena allocator for the Abstract Syntax Tree (AST) to ensure cache locality and simplified memory cleanup per command.
+This project implements core shell mechanics including system binary execution, standard I/O redirection, and background job control. 
 
 ## Usage
 
 ```bash
 odin run src
 ```
+
+
+
+## TODO
+- [ ] signal handling
+- [ ] expansions - variable expansion,parametric expansion,arthimetic expansion,glob
+- [ ] builtins
+- [ ] history
+- [ ] support for incomplete command
 
 ## Acknowledgments
 

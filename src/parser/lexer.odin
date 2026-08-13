@@ -134,7 +134,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 	case '}':
 		kind = .RIGHTBRACE
 	case '!':
-		kind = .BANG
+		kind = match(t, '=') ? .BANGEQ : .BANG
 	case '=':
 		kind = .EQUAL
 	case ';':
@@ -169,7 +169,7 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 			kind = .LESS
 		}
 	case utf8.RUNE_EOF, '\x00':
-		kind = .EOF
+		return new_token("EOF", .EOF)
 	case:
 		//everything else is a string in a shell
 		if ch == '\'' {
@@ -228,7 +228,9 @@ get_token :: proc(t: ^Tokenizer) -> Token {
 @(private = "file")
 is_shell_operator :: proc(c: rune) -> bool {
 	switch c {
-	case '|', '&', ';', '<', '>', '(', ')':
+	case '|', '&', ';', '<', '>':
+		return true
+	case ')':
 		return true
 	case:
 		return false

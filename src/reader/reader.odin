@@ -1,7 +1,6 @@
 package reader
 import "core:fmt"
 import "core:io"
-import "core:os"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -149,6 +148,10 @@ clear_buf :: proc(r: ^ReaderState) {
 	r.cursor_pos = 0
 }
 
+clear_screen :: proc() {
+	render(CursorControl[.ClearScreen] + CursorControl[.Home]) //clean the screen at startup and place cursor at home
+}
+
 read_line :: proc(r: ^ReaderState, stream: io.Stream) -> InputEvent {
 	type := read(r, stream)
 
@@ -283,8 +286,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 			case .Ctrl_D:
 				return handle_ctrld(r)
 			case .Ctrl_L:
-				render(CursorControl[.ClearScreen])
-				render(CursorControl[.Home])
+				render(CursorControl[.ClearScreen] + CursorControl[.Home])
 				print(r)
 			case .Enter:
 				render("\n")
