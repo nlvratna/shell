@@ -220,7 +220,7 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 		cmd, err = parse_case(p)
 	case .INVALID:
 		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
-		return nil, ParseError{err_type = .Unexpected_Token, msg = msg}
+		return nil, ParseError{err_type = .Unexpected_Token, msg = p.curr_token.text}
 	case:
 		if p.peek_token.kind == .LEFTPAREN {
 			cmd, err = parse_func(p)
