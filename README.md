@@ -13,8 +13,9 @@ odin run src
 
 
 ## TODO
+- [ ] add handling of unclosed paren,braces,..
 - [ ] signal handling
-- [ ] expansions - variable expansion,parametric expansion,arthimetic expansion,glob
+- [ ] expansions - variable expansion,parametric expansion,arthimetic expansion,glob,tilde
 - [ ] builtins
 - [ ] history
 - [ ] support for incomplete command
