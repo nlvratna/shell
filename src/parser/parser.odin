@@ -14,6 +14,7 @@ ErrorType :: enum {
 	None,
 	Unexpected_Token,
 	Unclosed_Quote,
+	Incompleted_Command,
 }
 
 ParseError :: struct {
@@ -21,9 +22,11 @@ ParseError :: struct {
 	msg:      string,
 }
 
-ParseEventType :: enum {
+Ast_Ready :: struct {}
+
+ParseEventType :: union {
 	Ast_Ready,
-	ErrorType,
+	ErrorType, //how to match the exact error type
 }
 
 
@@ -100,11 +103,11 @@ parse :: proc(p: ^Parser) -> ParserEvent {
 	context.allocator = context.temp_allocator //is this good?
 	cmd, err := parse_cmdlist(p)
 	if err.err_type != .None {
-		return ParserEvent{parse_err = err.msg, parse_event_type = .ErrorType}
+		return ParserEvent{parse_err = err.msg, parse_event_type = err.err_type}
 	}
 	skip_newlines(p)
 
-	return ParserEvent{parse_event_type = .Ast_Ready, command = cmd, cmd_string = p.cmd_string}
+	return ParserEvent{parse_event_type = Ast_Ready{}, command = cmd, cmd_string = p.cmd_string}
 }
 
 
@@ -220,7 +223,7 @@ parse_cmd :: proc(p: ^Parser) -> (Command, ParseError) {
 		cmd, err = parse_case(p)
 	case .INVALID:
 		msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
-		return nil, ParseError{err_type = .Unexpected_Token, msg = p.curr_token.text}
+		return nil, ParseError{err_type = .Unclosed_Quote, msg = p.curr_token.text}
 	case:
 		if p.peek_token.kind == .LEFTPAREN {
 			cmd, err = parse_func(p)
@@ -275,6 +278,9 @@ parse_simple_cmd :: proc(p: ^Parser) -> (^SimpleCommand, ParseError) {
 		case .AMPERSAND:
 			cmd.is_bg = true
 			advance_token(p)
+		case .INVALID:
+			msg := fmt.tprintf("Unexptected token,%s", p.curr_token.text)
+			return nil, ParseError{err_type = .Unclosed_Quote, msg = p.curr_token.text}
 		case:
 			break loop
 		}

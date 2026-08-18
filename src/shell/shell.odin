@@ -5,6 +5,7 @@ import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
+import "core:fmt"
 import "core:os"
 import posix "core:sys/posix"
 
@@ -29,14 +30,15 @@ run_not_interactive :: proc(data: string) {
 	p: parser.Parser //TODO:the file will have a bang at the start have to include that
 	parser.parser_init(&p, data)
 	parser_event := parser.parse(&p)
-	if parser_event.parse_event_type == .ErrorType {
-		reader.render_error(parser_event.parse_err)
-	}
+	// if parser_event.parse_event_type == .ErrorType {
+	// 	reader.render_error(parser_event.parse_err)
+	// }
 	execute.exec(parser_event.command, &s, parser_event.cmd_string)
 }
 
 
 run_interactive :: proc() {
+	curr_prompt := s.prompt
 	s.is_interactive = cast(bool)posix.isatty(posix.STDIN_FILENO)
 
 
@@ -44,12 +46,12 @@ run_interactive :: proc() {
 	defer state.disable_raw(&s)
 
 	r: reader.ReaderState
-	reader.reader_init(&r, s.prompt)
+	reader.reader_init(&r)
 
 	reader.clear_screen()
 	for s.is_running {
-		input_event := reader.read_line(&r, os.to_stream(os.stdin))
-		defer reader.clear_buf(&r) //works even when an error occurs
+		input_event := reader.read_line(&r, os.to_stream(os.stdin), curr_prompt)
+		// defer reader.clear_buf(&r) //works even when an error occurs
 
 		data: string
 		#partial switch input_event.type {
@@ -68,18 +70,34 @@ run_interactive :: proc() {
 		parser.parser_init(&p, data)
 
 		parse_event := parser.parse(&p)
-		if parse_event.parse_event_type == .ErrorType {
-			//ask the user to enter the required token as bash,zsh does maybe
-			reader.render_error(parse_event.parse_err)
-			continue
+		switch et in parse_event.parse_event_type {
+		case parser.Ast_Ready:
+			reader.clear_cmd_buf(&r)
+			curr_prompt = s.prompt
+
+			// parser.print_ast(parse_event.command)
+			exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
+			if exec.err != .None {
+				reader.render_error(exec.msg)
+				continue
+			}
+		case parser.ErrorType:
+			if et == .Unclosed_Quote {
+				curr_prompt = "dquote> "
+			} else {
+				reader.render_error(parse_event.parse_err)
+				reader.clear_cmd_buf(&r)
+				curr_prompt := s.prompt
+				continue
+			}
 		}
-		defer free_all(context.temp_allocator) //free the ast
+		free_all(context.temp_allocator) //free the ast
 
 		// parser.print_ast(parse_event.command)
-		exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
-		if exec.err != .None {
-			reader.render_error(exec.msg)
-			continue
-		}
+		// exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
+		// if exec.err != .None {
+		// 	reader.render_error(exec.msg)
+		// 	continue
+		// }
 	}
 }
