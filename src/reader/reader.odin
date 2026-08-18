@@ -122,29 +122,37 @@ read_key :: proc(stream: io.Stream) -> Input {
 
 
 ReaderState :: struct {
-	buffer:     [dynamic]rune,
-	cursor_pos: int,
-	prompt:     string,
-	prompt_len: int,
+	line_buffer: [dynamic]rune, //hold the current line
+	cursor_pos:  int,
+	prompt:      string,
+	prompt_len:  int,
+
+
+	//hold the full command
+	cmd_buffer:  [dynamic]rune,
 }
 
-reader_init :: proc(r: ^ReaderState, prompt: string) -> ^ReaderState {
+reader_init :: proc(r: ^ReaderState) -> ^ReaderState {
 	r^ = ReaderState {
-		buffer     = make([dynamic]rune),
-		cursor_pos = 0,
-		prompt     = prompt,
-		prompt_len = len(prompt),
+		line_buffer = make([dynamic]rune),
+		cmd_buffer  = make([dynamic]rune),
+		cursor_pos  = 0,
 	}
 	return r
 }
 
 reader_destroy :: proc(r: ^ReaderState) {
-	delete(r.buffer)
+	delete(r.line_buffer)
+	delete(r.cmd_buffer)
 	free(r)
 }
 
+clear_cmd_buf :: proc(r: ^ReaderState) {
+	clear(&r.cmd_buffer)
+}
+
 clear_buf :: proc(r: ^ReaderState) {
-	clear(&r.buffer)
+	clear(&r.line_buffer)
 	r.cursor_pos = 0
 }
 
@@ -152,10 +160,12 @@ clear_screen :: proc() {
 	render(CursorControl[.ClearScreen] + CursorControl[.Home]) //clean the screen at startup and place cursor at home
 }
 
-read_line :: proc(r: ^ReaderState, stream: io.Stream) -> InputEvent {
+read_line :: proc(r: ^ReaderState, stream: io.Stream, prompt: string) -> InputEvent {
+	r.prompt = prompt
+	r.prompt_len = len(prompt)
 	type := read(r, stream)
 
-	data := utf8.runes_to_string(r.buffer[:], context.temp_allocator)
+	data := utf8.runes_to_string(r.cmd_buffer[:], context.temp_allocator)
 
 	if type == .Read_Error {
 		return InputEvent{err = data, type = type}
@@ -182,7 +192,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 
 		strings.write_string(&sb, r.prompt)
 
-		for ch in r.buffer {
+		for ch in r.line_buffer {
 			strings.write_rune(&sb, ch)
 		}
 
@@ -193,18 +203,18 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 	}
 
 	delete_from_buffer :: proc(r: ^ReaderState) {
-		if len(r.buffer) == 0 {
+		if len(r.line_buffer) == 0 {
 			return
 		}
-		ordered_remove(&r.buffer, r.cursor_pos - 1)
+		ordered_remove(&r.line_buffer, r.cursor_pos - 1)
 		r.cursor_pos -= 1
 	}
 
 	add_to_buffer :: proc(r: ^ReaderState, ch: rune) {
-		if r.cursor_pos == len(r.buffer) {
-			append(&r.buffer, ch)
+		if r.cursor_pos == len(r.line_buffer) {
+			append(&r.line_buffer, ch)
 		} else {
-			inject_at(&r.buffer, r.cursor_pos, ch)
+			inject_at(&r.line_buffer, r.cursor_pos, ch)
 		}
 		r.cursor_pos += 1
 	}
@@ -216,19 +226,19 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 	}
 
 	delete_word :: proc(r: ^ReaderState) {
-		if len(r.buffer) == 0 || r.cursor_pos == 0 {
+		if len(r.line_buffer) == 0 || r.cursor_pos == 0 {
 			return
 		}
 
 		curr_pos := r.cursor_pos - 1
 
-		for curr_pos >= 0 && unicode.is_white_space(r.buffer[curr_pos]) {
-			ordered_remove(&r.buffer, curr_pos)
+		for curr_pos >= 0 && unicode.is_white_space(r.line_buffer[curr_pos]) {
+			ordered_remove(&r.line_buffer, curr_pos)
 			curr_pos -= 1
 		}
 
-		for curr_pos >= 0 && !unicode.is_white_space(r.buffer[curr_pos]) {
-			ordered_remove(&r.buffer, curr_pos)
+		for curr_pos >= 0 && !unicode.is_white_space(r.line_buffer[curr_pos]) {
+			ordered_remove(&r.line_buffer, curr_pos)
 			curr_pos -= 1
 		}
 		r.cursor_pos = curr_pos + 1
@@ -242,7 +252,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 	}
 
 	handle_ctrld :: proc(r: ^ReaderState) -> InputEventType {
-		if len(r.buffer) == 0 {
+		if len(r.line_buffer) == 0 {
 			return .Exit_Shell
 		}
 		return .None
@@ -258,17 +268,18 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 
 
 	move_right :: proc(r: ^ReaderState) {
-		if r.cursor_pos == 0 && len(r.buffer) == 0 {
+		if r.cursor_pos == 0 && len(r.line_buffer) == 0 {
 			return
 		}
-		if r.cursor_pos == len(r.buffer) {
+		if r.cursor_pos == len(r.line_buffer) {
 			return
 		}
 		r.cursor_pos += 1
 	}
 
-	// clear_buf(r)
-	print(r)
+	clear_buf(r)
+	render(r.prompt)
+	// print(r)
 	for {
 		key := read_key(stream)
 
@@ -289,6 +300,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				render(CursorControl[.ClearScreen] + CursorControl[.Home])
 				print(r)
 			case .Enter:
+				append(&r.cmd_buffer, ..r.line_buffer[:])
+				// print(r)
 				render("\n")
 				return .Line_Ready
 			case .BackSpace:
