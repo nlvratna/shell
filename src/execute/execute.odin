@@ -3,7 +3,6 @@ package execute
 import "../jobs"
 import "../parser"
 import "../state"
-import "base:runtime"
 import "core:c"
 import "core:fmt"
 import "core:strings"
@@ -19,26 +18,26 @@ EventError :: enum {
 	Exec_Error,
 }
 
-// ExecStatus :: enum {
-// 	Finished,
-// 	Suspended,
-// 	Stopped,
-// 	Background,
-// 	Failed,
-// }
+ExecState :: enum {
+	Finished,
+	Suspended,
+	Stopped,
+	Background,
+	Failed,
+}
 
 ExecEvent :: struct {
-	// status: ExecStatus,
-	err: EventError,
-	job: ^jobs.Job,
-	msg: string,
+	state:  ExecState,
+	status: int,
+	err:    EventError,
+	job:    ^jobs.Job,
+	msg:    string,
 }
 
 
 exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> ExecEvent {
 	j := new(jobs.Job)
 	jobs.init_job(j, cmd_string)
-	defer delete(j.procs)
 
 	if s.is_interactive do state.disable_raw(s)
 	defer if s.is_interactive do state.enable_raw(s)
@@ -48,7 +47,9 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 		return ExecEvent{err = err}
 	}
 
-	return ExecEvent{job = j}
+	state := get_state(status, j)
+
+	return ExecEvent{job = j, status = status}
 }
 
 
@@ -417,6 +418,9 @@ exec_redirects :: proc(
 	return status, err
 }
 
+handle_bg_procs :: proc(s: ^state.ShellState) {
+}
+
 @(private)
 reap_process :: proc(pid: posix.pid_t) -> int {
 	status: c.int
@@ -426,9 +430,9 @@ reap_process :: proc(pid: posix.pid_t) -> int {
 	case posix.WIFEXITED(status):
 		return int(posix.WEXITSTATUS(status))
 	case posix.WIFSIGNALED(status):
-		return -128 + int(posix.WTERMSIG(status))
+		return 128 + int(posix.WTERMSIG(status))
 	case posix.WIFSTOPPED(status):
-		return -128 + int(posix.WSTOPSIG(status))
+		return 128 + int(posix.WSTOPSIG(status))
 	case:
 		return -1
 	}
@@ -455,6 +459,7 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 	return .None
 }
 
+@(private)
 child_setup :: proc(p: ^jobs.Process, j: ^jobs.Job) {
 	child_pid := posix.getpid()
 
@@ -533,7 +538,7 @@ wait_job :: proc(s: ^state.ShellState, j: ^jobs.Job) -> int {
 	for p in j.procs {
 		if p.pid > 0 {
 			status := reap_process(p.pid)
-			p.exit_status = status
+			p.exit_status = status // I don't know if this is right
 
 			if p == j.procs[len(j.procs) - 1] {
 				exit_status = status
@@ -555,8 +560,8 @@ reset_signal :: proc() {
 	}
 }
 
-//use sigaction and register a sigchild handler for this
-reap_bg_processes :: proc(s: ^state.ShellState) {
+@(private)
+reap_bg_procs :: proc(s: ^state.ShellState) {
 	status: c.int
 	found: bool
 	completed_id: int
@@ -582,3 +587,31 @@ reap_bg_processes :: proc(s: ^state.ShellState) {
 	}
 }
 
+@(private)
+get_state :: proc(status: int, j: ^jobs.Job) -> ExecState {
+	if j.is_bg {
+		return .Background
+	}
+
+	suspend_tstp := 128 + int(posix.SIGTSTP)
+	suspend_ttin := 128 + int(posix.SIGTTIN)
+	suspend_ttou := 128 + int(posix.SIGTTOU)
+	suspend_stop := 128 + int(posix.SIGSTOP)
+
+	if status == suspend_tstp ||
+	   status == suspend_ttin ||
+	   status == suspend_ttou ||
+	   status == suspend_stop {
+		return .Suspended
+	}
+
+	if status > 128 {
+		return .Stopped
+	}
+
+	if status == 0 {
+		return .Finished
+	}
+
+	return .Failed
+}

@@ -2,6 +2,7 @@ package reader
 import "core:fmt"
 import "core:io"
 import "core:strings"
+import "core:sys/posix"
 import "core:unicode"
 import "core:unicode/utf8"
 
@@ -48,10 +49,13 @@ ReadError :: struct {
 	msg: string,
 }
 
+Interrupt :: struct {}
+
 Input :: union {
 	rune,
 	Key,
 	ReadError,
+	Interrupt,
 }
 
 InputEventType :: enum {
@@ -59,8 +63,7 @@ InputEventType :: enum {
 	Line_Ready,
 	Read_Error,
 	Exit_Shell,
-	SigChld,
-	SigWhich,
+	Interrupt,
 }
 
 InputEvent :: struct {
@@ -71,8 +74,13 @@ InputEvent :: struct {
 
 //error handling
 read_key :: proc(stream: io.Stream) -> Input {
-	ch, sz, err := io.read_rune(stream)
+	ch, sz, err := io.read_rune(stream) //try to use posix.read() maybe?
 	if err != nil {
+
+		if posix.errno() == .EINTR {
+			return Interrupt{}
+		}
+		//this might still be bad
 		err_msg := fmt.tprintf("Read error:%v", err)
 		return ReadError{msg = err_msg}
 	}
@@ -287,6 +295,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 		case ReadError:
 			add_string(r, v.msg)
 			return .Read_Error
+		case Interrupt:
+			return .Interrupt
 		case rune:
 			add_to_buffer(r, v)
 			print(r)

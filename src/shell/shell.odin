@@ -1,17 +1,14 @@
 package shell
 
 import "../execute"
-import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
-import "core:fmt"
 import "core:os"
 import posix "core:sys/posix"
 
 
 s: state.ShellState
-rem_procs: map[posix.pid_t]^jobs.Process //store the process that are suspended or bg
 
 init_shell :: proc() {
 	state.shell_state_init(&s)
@@ -49,9 +46,9 @@ run_interactive :: proc() {
 	reader.reader_init(&r)
 
 	reader.clear_screen()
+	execute.setup_signals()
 	for s.is_running {
 		input_event := reader.read_line(&r, os.to_stream(os.stdin), curr_prompt)
-		// defer reader.clear_buf(&r) //works even when an error occurs
 
 		data: string
 		#partial switch input_event.type {
@@ -63,6 +60,12 @@ run_interactive :: proc() {
 		case .Exit_Shell:
 			state.disable_raw(&s)
 			os.exit(0)
+		case .Interrupt:
+			if execute.g_sig.sig_child {
+				execute.handle_bg_procs(&s)
+			}
+			execute.unset_signal()
+			continue
 		}
 
 
@@ -81,8 +84,12 @@ run_interactive :: proc() {
 				reader.render_error(exec.msg)
 				continue
 			}
+			s.last_cmd_status = exec.status
+			if exec.state == .Background || exec.state == .Suspended {
+				//add this to bg procs in shell
+			}
 		case parser.ErrorType:
-			if et == .Unclosed_Quote {
+			if et == .Unclosed_Quote { 	//TODO:add more to this?
 				curr_prompt = "dquote> "
 			} else {
 				reader.render_error(parse_event.parse_err)
@@ -92,12 +99,5 @@ run_interactive :: proc() {
 			}
 		}
 		free_all(context.temp_allocator) //free the ast
-
-		// parser.print_ast(parse_event.command)
-		// exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
-		// if exec.err != .None {
-		// 	reader.render_error(exec.msg)
-		// 	continue
-		// }
 	}
 }

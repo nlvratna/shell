@@ -18,6 +18,7 @@ set_stream :: proc "contextless" () {
 }
 
 
+//TODO: handle print width using current window size and height
 render :: proc {
 	render_string,
 	render_bytes,

@@ -23,7 +23,7 @@ ShellState :: struct {
 	old_wd:           string,
 	using term_state: TermState,
 	last_cmd_status:  int,
-	bg_processes:     map[int]posix.pid_t,
+	bg_processes:     map[int]posix.pid_t, //store Job instead
 	prompt:           string,
 }
 
