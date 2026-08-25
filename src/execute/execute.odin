@@ -2,6 +2,7 @@ package execute
 
 import "../jobs"
 import "../parser"
+import "../reader"
 import "../state"
 import "core:c"
 import "core:fmt"
@@ -49,7 +50,7 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 
 	state := get_state(status, j)
 
-	return ExecEvent{job = j, status = status}
+	return ExecEvent{job = j, status = status, state = state}
 }
 
 
