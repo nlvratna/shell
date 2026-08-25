@@ -1,5 +1,6 @@
 package state
 
+import "../jobs"
 import "core:fmt"
 import "core:os"
 
@@ -23,7 +24,7 @@ ShellState :: struct {
 	old_wd:           string,
 	using term_state: TermState,
 	last_cmd_status:  int,
-	bg_processes:     map[int]posix.pid_t, //store Job instead
+	bg_processes:     [dynamic]^jobs.Job,
 	prompt:           string,
 }
 

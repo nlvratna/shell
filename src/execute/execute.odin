@@ -84,7 +84,6 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 	}
 }
 
-//handle bang!
 exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
 	in_fd := posix.FD(posix.STDIN_FILENO)
 	pipe_fds: [2]posix.FD
@@ -152,7 +151,7 @@ exec_simple :: proc(
 
 	append(&j.procs, p)
 
-	jobs.populate_process(s, p, c)
+	jobs.populate_process(s.vars, p, c)
 
 	cmd_name := p.expanded_args[0]
 	if cmd_name == "break" {
@@ -165,6 +164,10 @@ exec_simple :: proc(
 	}
 
 
+	if c.is_bg {
+		j.is_bg = true
+	}
+
 	err := spawn_process(s, p, j)
 	if err != .None {
 		return -1, err
@@ -174,12 +177,12 @@ exec_simple :: proc(
 		j.pgid = p.pid
 	}
 
-	if c.is_bg {
-		j.is_bg = true
-		return 0, .None
-	}
 
 	posix.setpgid(p.pid, j.pgid) //place the child in the job process group
+
+	if c.is_bg {
+		return 0, .None
+	}
 
 	//Ignore terminal input and output so shell can take back the control
 	posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
@@ -420,6 +423,15 @@ exec_redirects :: proc(
 }
 
 handle_bg_procs :: proc(s: ^state.ShellState) {
+	for i in 0 ..< len(s.bg_processes) {
+		job := s.bg_processes[i]
+		fmt.println("calling reap bg process")
+		if reap_bg_procs(job) {
+			msg := fmt.tprintf("[%d] done %s", i + 1, job.command)
+			reader.render(msg)
+			unordered_remove(&s.bg_processes, i)
+		}
+	}
 }
 
 @(private)
@@ -562,30 +574,25 @@ reset_signal :: proc() {
 }
 
 @(private)
-reap_bg_procs :: proc(s: ^state.ShellState) {
+reap_bg_procs :: proc(j: ^jobs.Job) -> bool {
 	status: c.int
 	found: bool
-	completed_id: int
 
 	for {
-		wait_pid := posix.waitpid(-1, &status, {.NOHANG})
+		wait_pid := posix.waitpid(-j.pgid, &status, {.NOHANG})
 		if wait_pid <= 0 do break
 
 		if posix.WIFEXITED(status) || posix.WIFSIGNALED(status) {
-			for id, pid in s.bg_processes {
-				if pid == wait_pid {
-					completed_id = id
+			for p in j.procs {
+				if p.pid == wait_pid {
+					fmt.println("found the proc that is completed")
 					found = true
 					break
 				}
 			}
-
-			if found {
-				fmt.printf("[%d]-done\n", (completed_id + 1))
-				delete_key(&s.bg_processes, completed_id)
-			}
 		}
 	}
+	return found
 }
 
 @(private)

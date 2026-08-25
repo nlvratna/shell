@@ -1,8 +1,9 @@
 package reader
+
 import "core:fmt"
 import "core:io"
 import "core:strings"
-import "core:sys/posix"
+import posix "core:sys/posix"
 import "core:unicode"
 import "core:unicode/utf8"
 
@@ -74,10 +75,11 @@ InputEvent :: struct {
 
 //error handling
 read_key :: proc(stream: io.Stream) -> Input {
-	ch, sz, err := io.read_rune(stream) //try to use posix.read() maybe?
+	ch, sz, err := io.read_rune(stream) //use posix.read?
+	last_errno := posix.errno()
+	fmt.println(last_errno)
 	if err != nil {
-
-		if posix.errno() == .EINTR {
+		if last_errno == .EINTR {
 			return Interrupt{}
 		}
 		//this might still be bad

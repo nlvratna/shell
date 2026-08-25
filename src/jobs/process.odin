@@ -4,7 +4,6 @@ import "core:strings"
 import "core:unicode"
 
 import "../parser"
-import "../state"
 import posix "core:sys/posix"
 
 
@@ -35,11 +34,13 @@ init_process :: proc(p: ^Process, j: ^Job) {
 }
 
 populate_process :: proc(
-	s: ^state.ShellState,
+	vars: map[string]string,
 	p: ^Process,
 	cmd: ^parser.SimpleCommand,
 ) -> ProcessErrorType {
 	append(&p.redirects, ..cmd.redirects[:])
+
+
 	p.env = make(map[cstring]cstring)
 	for assign in cmd.assigns {
 		idx := strings.index_byte(assign, '=')
@@ -49,6 +50,7 @@ populate_process :: proc(
 
 		p.env[key] = val
 	}
+
 	args := make([dynamic]cstring, 0, len(cmd.words) + 1)
 	for w in cmd.words {
 		append(&args, strings.clone_to_cstring(w))
@@ -56,7 +58,7 @@ populate_process :: proc(
 	append(&args, nil)
 	p.cmd = args[0]
 	p.args = cmd.words
-	p.expanded_args = expand_env(s, cmd.words)
+	p.expanded_args = expand_env(vars, cmd.words)
 	return nil
 }
 
@@ -70,7 +72,7 @@ destroy_process :: proc(p: ^Process) {
 }
 
 //TODO:parameter expansion
-expand_env :: proc(s: ^state.ShellState, words: [dynamic]string) -> (args: [dynamic]cstring) {
+expand_env :: proc(vars: map[string]string, words: [dynamic]string) -> (args: [dynamic]cstring) {
 	args = make([dynamic]cstring)
 	for arg in words {
 		if arg == "" do continue
@@ -96,7 +98,7 @@ expand_env :: proc(s: ^state.ShellState, words: [dynamic]string) -> (args: [dyna
 		for len(a) > offset && unicode.is_alpha(rune(a[offset])) {
 			offset = offset + 1
 		}
-		val, ok := s.vars[a[idx + 1:offset]]
+		val, ok := vars[a[idx + 1:offset]]
 		replaced_string: string
 		if ok {
 			replaced_string, _ = strings.replace(a, a[idx:offset], val, -1)
