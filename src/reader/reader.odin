@@ -317,6 +317,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 					r.prompt = "> "
 					r.prompt_len = len(r.prompt)
 
+					//strip the \ and add a space instead -> easy way
 					append(&r.cmd_buffer, ..r.line_buffer[:n - 1])
 					append(&r.cmd_buffer, ' ')
 
