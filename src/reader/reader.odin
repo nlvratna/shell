@@ -73,21 +73,25 @@ InputEvent :: struct {
 	err:  string,
 }
 
-//error handling
 read_key :: proc(stream: io.Stream) -> Input {
-	ch, sz, err := io.read_rune(stream) //use posix.read?
-	last_errno := posix.errno()
-	fmt.println(last_errno)
-	if err != nil {
-		if last_errno == .EINTR {
+	buf: [4]byte
+
+	size := posix.read(posix.STDIN_FILENO, raw_data(buf[:]), len(buf))
+	if size == -1 {
+		errno := posix.errno()
+		if errno == .EINTR {
 			return Interrupt{}
 		}
-		//this might still be bad
-		err_msg := fmt.tprintf("Read error:%v", err)
+
+		err_msg := fmt.tprintf("Read error:%v", errno)
 		return ReadError{msg = err_msg}
 	}
 
-	switch ch {
+	if size == 0 {
+		return .Unknown
+	}
+
+	switch buf[0] {
 	case 1:
 		return .Ctrl_A
 	case 3:
@@ -105,12 +109,8 @@ read_key :: proc(stream: io.Stream) -> Input {
 	case 23:
 		return .Ctrl_W
 	case 27:
-		second, size, err := io.read_rune(stream)
-
-		if second == '[' {
-			third, size, err := io.read_rune(stream)
-
-			switch third {
+		if buf[1] == '[' && size >= 3 {
+			switch buf[2] {
 			case 'A':
 				return .Up_Arrow
 			case 'B':
@@ -119,12 +119,12 @@ read_key :: proc(stream: io.Stream) -> Input {
 				return .Right_Arrow
 			case 'D':
 				return .Left_Arrow
-
 			}
-
 		}
+	}
 
-	case 32 ..= 126, 128 ..= 0x10FFFF:
+	ch, width := utf8.decode_rune(buf[:size])
+	if ch != utf8.RUNE_ERROR {
 		return ch
 	}
 	return .Unknown
