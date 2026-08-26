@@ -311,10 +311,26 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				render(CursorControl[.ClearScreen] + CursorControl[.Home])
 				print(r)
 			case .Enter:
+				n := len(r.line_buffer)
+
+				if n > 0 && r.line_buffer[n - 1] == '\\' {
+					r.prompt = "> "
+					r.prompt_len = len(r.prompt)
+
+					append(&r.cmd_buffer, ..r.line_buffer[:n - 1])
+					append(&r.cmd_buffer, ' ')
+
+					clear_buf(r)
+
+					render("\r\n")
+					print(r)
+					continue
+				}
+
+				// Normal execution (no trailing backslash)
 				append(&r.cmd_buffer, ..r.line_buffer[:])
-				clear(&r.line_buffer)
-				// print(r)
-				render("\n")
+				clear_buf(r) // Use clear_buf() here too for consistency
+				render("\r\n")
 				return .Line_Ready
 			case .BackSpace:
 				delete_from_buffer(r)
