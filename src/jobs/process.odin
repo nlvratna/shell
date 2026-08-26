@@ -33,6 +33,28 @@ init_process :: proc(p: ^Process, j: ^Job) {
 	p.out_fd = j.stdout
 }
 
+destroy_process :: proc(p: ^Process) {
+	for k, v in p.env {
+		delete(k)
+		delete(v)
+	}
+	delete(p.env)
+	for arg in p.args {
+		delete(arg)
+	}
+	delete(p.args)
+	for e in p.expanded_args {
+		delete(e)
+	}
+	delete(p.expanded_args)
+	for r in p.redirects {
+		delete(r.file)
+	}
+	delete(p.redirects)
+
+	free(p)
+}
+
 populate_process :: proc(
 	vars: map[string]string,
 	p: ^Process,
@@ -51,25 +73,16 @@ populate_process :: proc(
 		p.env[key] = val
 	}
 
-	args := make([dynamic]cstring, 0, len(cmd.words) + 1)
+	p.args = make([dynamic]string, 0, len(cmd.words))
 	for w in cmd.words {
-		append(&args, strings.clone_to_cstring(w))
+		append(&p.args, strings.clone(w))
 	}
-	append(&args, nil)
+	args := expand_env(vars, cmd.words)
+	p.expanded_args = args
 	p.cmd = args[0]
-	p.args = cmd.words
-	p.expanded_args = expand_env(vars, cmd.words)
 	return nil
 }
 
-//TODO:this is wrong change this
-destroy_process :: proc(p: ^Process) {
-	delete(p.args)
-	delete(p.cmd)
-	delete(p.env)
-	delete(p.redirects)
-	free(p)
-}
 
 //TODO:parameter expansion
 expand_env :: proc(vars: map[string]string, words: [dynamic]string) -> (args: [dynamic]cstring) {
@@ -106,6 +119,7 @@ expand_env :: proc(vars: map[string]string, words: [dynamic]string) -> (args: [d
 			replaced_string, _ = strings.replace(a, a[idx:offset], "", 1)
 		}
 		append(&args, strings.clone_to_cstring(replaced_string))
+		delete(replaced_string)
 	}
 	append(&args, nil)
 	return args

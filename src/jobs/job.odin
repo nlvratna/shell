@@ -25,3 +25,12 @@ init_job :: proc(j: ^Job, cmd: string) {
 
 }
 
+destroy_job :: proc(j: ^Job) {
+	delete(j.command)
+	for p in j.procs {
+		destroy_process(p)
+	}
+	delete(j.procs)
+	free(j)
+}
+

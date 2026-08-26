@@ -154,7 +154,6 @@ reader_init :: proc(r: ^ReaderState) -> ^ReaderState {
 reader_destroy :: proc(r: ^ReaderState) {
 	delete(r.line_buffer)
 	delete(r.cmd_buffer)
-	free(r)
 }
 
 clear_cmd_buf :: proc(r: ^ReaderState) {
@@ -313,6 +312,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				print(r)
 			case .Enter:
 				append(&r.cmd_buffer, ..r.line_buffer[:])
+				clear(&r.line_buffer)
 				// print(r)
 				render("\n")
 				return .Line_Ready

@@ -50,8 +50,19 @@ shell_state_init :: proc(s: ^ShellState) {
 }
 
 shell_state_destroy :: proc(s: ^ShellState) {
+	for bin in s.binaries {
+		delete(bin)
+	}
 	delete(s.binaries)
+	for k in s.builtins {
+		delete(k)
+	}
 	delete(s.builtins)
+
+	for rem in s.bg_processes {
+		jobs.destroy_job(rem) //is this good
+	}
+	delete(s.bg_processes)
 }
 
 

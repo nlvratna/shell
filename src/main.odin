@@ -23,7 +23,6 @@ main :: proc() {
 			mem.tracking_allocator_destroy(&track)
 		}
 	}
-
 	shell.init_shell()
 	defer shell.destroy_shell()
 

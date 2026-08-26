@@ -1,6 +1,7 @@
 package shell
 
 import "../execute"
+import "../jobs"
 import "../parser"
 import "../reader"
 import "../state"
@@ -45,6 +46,7 @@ run_interactive :: proc() {
 
 	r: reader.ReaderState
 	reader.reader_init(&r)
+	defer reader.reader_destroy(&r)
 
 	reader.clear_screen()
 	execute.setup_signals()
@@ -60,7 +62,7 @@ run_interactive :: proc() {
 			continue
 		case .Exit_Shell:
 			state.disable_raw(&s)
-			os.exit(0)
+			return
 		case .Interrupt:
 			if execute.g_sig.sig_child {
 				execute.handle_bg_procs(&s)
@@ -91,6 +93,8 @@ run_interactive :: proc() {
 				reader.render(message)
 				exec.job.id = len(s.bg_processes) + 1
 				append(&s.bg_processes, exec.job)
+			} else {
+				jobs.destroy_job(exec.job)
 			}
 		case parser.ErrorType:
 			if et == .Unclosed_Quote { 	//TODO:add more to this?

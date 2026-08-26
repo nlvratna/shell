@@ -428,6 +428,7 @@ handle_bg_procs :: proc(s: ^state.ShellState) {
 			msg := fmt.tprintf("\n[%d] done %s\n", job.id, job.command)
 			reader.render(msg) //not storing the current command being typed not good fix that
 			unordered_remove(&s.bg_processes, i)
+			jobs.destroy_job(job)
 		}
 	}
 }
