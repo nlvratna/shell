@@ -423,12 +423,10 @@ exec_redirects :: proc(
 }
 
 handle_bg_procs :: proc(s: ^state.ShellState) {
-	for i in 0 ..< len(s.bg_processes) {
-		job := s.bg_processes[i]
-		fmt.println("calling reap bg process")
+	#reverse for job, i in s.bg_processes {
 		if reap_bg_procs(job) {
-			msg := fmt.tprintf("[%d] done %s", i + 1, job.command)
-			reader.render(msg)
+			msg := fmt.tprintf("\n[%d] done %s\n", job.id, job.command)
+			reader.render(msg) //not storing the current command being typed not good fix that
 			unordered_remove(&s.bg_processes, i)
 		}
 	}
@@ -585,7 +583,6 @@ reap_bg_procs :: proc(j: ^jobs.Job) -> bool {
 		if posix.WIFEXITED(status) || posix.WIFSIGNALED(status) {
 			for p in j.procs {
 				if p.pid == wait_pid {
-					fmt.println("found the proc that is completed")
 					found = true
 					break
 				}

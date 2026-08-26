@@ -62,9 +62,7 @@ run_interactive :: proc() {
 			state.disable_raw(&s)
 			os.exit(0)
 		case .Interrupt:
-			fmt.println("found interrupt signal")
 			if execute.g_sig.sig_child {
-				fmt.println("it is sigchild")
 				execute.handle_bg_procs(&s)
 			}
 			execute.unset_signal()
@@ -91,6 +89,7 @@ run_interactive :: proc() {
 			if exec.state == .Background || exec.state == .Suspended {
 				message := fmt.tprintf("[%d]- %d\n", len(s.bg_processes) + 1, exec.job.pgid)
 				reader.render(message)
+				exec.job.id = len(s.bg_processes) + 1
 				append(&s.bg_processes, exec.job)
 			}
 		case parser.ErrorType:

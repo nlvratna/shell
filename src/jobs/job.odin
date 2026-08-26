@@ -1,8 +1,10 @@
 package jobs
 
+import "core:strings"
 import posix "core:sys/posix"
 
 Job :: struct {
+	id:          int,
 	pgid:        posix.pid_t,
 	command:     string,
 	procs:       [dynamic]^Process,
@@ -15,7 +17,7 @@ Job :: struct {
 }
 
 init_job :: proc(j: ^Job, cmd: string) {
-	j.command = cmd
+	j.command = strings.clone(cmd)
 	j.stdin = posix.FD(posix.STDIN_FILENO)
 	j.stdout = posix.FD(posix.STDOUT_FILENO)
 	j.stderr = posix.FD(posix.STDERR_FILENO)
