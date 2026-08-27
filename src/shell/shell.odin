@@ -41,17 +41,19 @@ run_interactive :: proc() {
 	s.is_interactive = cast(bool)posix.isatty(posix.STDIN_FILENO)
 
 
-	state.enable_raw(&s)
-	defer state.disable_raw(&s)
+	// state.enable_raw(&s)
+	// defer state.disable_raw(&s)
 
 	r: reader.ReaderState
-	reader.reader_init(&r)
+	reader.reader_init(&r, &s)
 	defer reader.reader_destroy(&r)
 
 	reader.clear_screen()
 	execute.setup_signals()
 	for s.is_running {
+		state.enable_raw(&s)
 		input_event := reader.read_line(&r, os.to_stream(os.stdin), curr_prompt)
+		state.disable_raw(&s)
 
 		data: string
 		#partial switch input_event.type {
@@ -70,7 +72,6 @@ run_interactive :: proc() {
 			execute.unset_signal()
 			continue
 		}
-
 
 		p: parser.Parser
 		parser.parser_init(&p, data)

@@ -40,9 +40,6 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 	j := new(jobs.Job)
 	jobs.init_job(j, cmd_string)
 
-	if s.is_interactive do state.disable_raw(s)
-	defer if s.is_interactive do state.enable_raw(s)
-
 	status, err := exec_cmd(cmd, s, j)
 	if err != .None {
 		return ExecEvent{err = err}
