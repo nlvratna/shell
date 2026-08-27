@@ -31,7 +31,7 @@ history_init :: proc(hist: ^History, s: ^state.ShellState) {
 		file_path = path,
 		max_size  = size,
 		entries   = entries,
-		idx       = len(entries) - 1,
+		idx       = len(entries),
 	}
 }
 
@@ -48,19 +48,33 @@ history_delete :: proc(hist: ^History) {
 	free(hist)
 }
 
-hist_get_idx :: proc(hist: ^History) -> string {
-	if hist.idx == -1 {
-		return ""
+//I hate naming
+hist_prev :: proc(hist: ^History) -> (entry: string, ok: bool) {
+	if hist.idx <= 0 || len(hist.entries) == 0 {
+		ok = false
+		return
 	}
-	entry := hist.entries[hist.idx]
 	hist.idx -= 1
-	return entry
+	entry = hist.entries[hist.idx]
+	ok = true
+	return
+}
+
+hist_next :: proc(hist: ^History) -> (entry: string, ok: bool) {
+	if len(hist.entries) == 0 || hist.idx >= len(hist.entries) - 1 {
+		ok = false
+		return
+	}
+	hist.idx += 1
+	entry = hist.entries[hist.idx]
+	ok = true
+	return
 }
 
 hist_add_entry :: proc(hist: ^History, entry: string) {
 	append(&hist.entries, strings.clone(entry))
 	hist.is_dirty = true
-	hist.idx += 1
+	hist.idx = len(hist.entries)
 }
 
 get_file_path :: proc(s: ^state.ShellState) -> string {
@@ -87,6 +101,8 @@ get_entries :: proc(file_path: string) -> (entries: [dynamic]string) {
 		fmt.eprintf("couldn't open the file:%v\n", err)
 		return
 	}
+	defer os.close(file)
+
 	bytes, r_err := os.read_entire_file_from_file(file, context.temp_allocator)
 	if r_err != nil {
 		fmt.eprintf("couldn't read from the history file:%v\n", err)

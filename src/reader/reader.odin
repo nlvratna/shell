@@ -357,15 +357,21 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				move_right(r)
 				print(r)
 			case .Up_Arrow:
-				entry := hist_get_idx(r.hist) //TODO:Add histories
-				//clear the line on the screen and render the command from history
-				//clear the line buffer and put the entry to buffer
-				render(CursorControl[.ClearLine])
-				clear_buf(r)
-				add_string(r, entry)
-				print(r)
-			// case .Down_Arrow:
-			// //history down
+				if entry, ok := hist_prev(r.hist); ok {
+					//clear the line on the screen and render the command from history
+					//clear the line buffer and put the entry to buffer
+					render(CursorControl[.ClearLine])
+					clear_buf(r)
+					add_string(r, entry)
+					print(r)
+				}
+			case .Down_Arrow:
+				if entry, ok := hist_next(r.hist); ok {
+					render(CursorControl[.ClearLine])
+					clear_buf(r)
+					add_string(r, entry)
+					print(r)
+				}
 			}
 		}
 
