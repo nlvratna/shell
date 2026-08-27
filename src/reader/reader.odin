@@ -1,5 +1,6 @@
 package reader
 
+import "../state"
 import "core:fmt"
 import "core:io"
 import "core:strings"
@@ -136,24 +137,29 @@ ReaderState :: struct {
 	cursor_pos:  int,
 	prompt:      string,
 	prompt_len:  int,
+	hist:        ^History, //is this the right place for this
 
 
 	//hold the full command
 	cmd_buffer:  [dynamic]rune,
 }
 
-reader_init :: proc(r: ^ReaderState) -> ^ReaderState {
+reader_init :: proc(r: ^ReaderState, s: ^state.ShellState) {
+	hist := new(History)
+	history_init(hist, s)
+
 	r^ = ReaderState {
 		line_buffer = make([dynamic]rune),
 		cmd_buffer  = make([dynamic]rune),
 		cursor_pos  = 0,
+		hist        = hist,
 	}
-	return r
 }
 
 reader_destroy :: proc(r: ^ReaderState) {
 	delete(r.line_buffer)
 	delete(r.cmd_buffer)
+	history_delete(r.hist)
 }
 
 clear_cmd_buf :: proc(r: ^ReaderState) {
@@ -172,6 +178,7 @@ clear_screen :: proc() {
 read_line :: proc(r: ^ReaderState, stream: io.Stream, prompt: string) -> InputEvent {
 	r.prompt = prompt
 	r.prompt_len = len(prompt)
+
 	type := read(r, stream)
 
 	data := utf8.runes_to_string(r.cmd_buffer[:], context.temp_allocator)
@@ -179,6 +186,7 @@ read_line :: proc(r: ^ReaderState, stream: io.Stream, prompt: string) -> InputEv
 	if type == .Read_Error {
 		return InputEvent{err = data, type = type}
 	} else if type == .Line_Ready {
+		hist_add_entry(r.hist, data)
 		return InputEvent{data = data, type = type}
 	} else if type == .Exit_Shell {
 		return InputEvent{type = type}
@@ -348,8 +356,14 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 			case .Right_Arrow:
 				move_right(r)
 				print(r)
-			// case .Up_Arrow:
-			// //history up                //TODO:Add histories
+			case .Up_Arrow:
+				entry := hist_get_idx(r.hist) //TODO:Add histories
+				//clear the line on the screen and render the command from history
+				//clear the line buffer and put the entry to buffer
+				render(CursorControl[.ClearLine])
+				clear_buf(r)
+				add_string(r, entry)
+				print(r)
 			// case .Down_Arrow:
 			// //history down
 			}

@@ -33,7 +33,7 @@ shell_state_init :: proc(s: ^ShellState) {
 	s.is_running = true
 	s.prompt = "$ "
 
-	cwd, alloc_err := os.get_working_directory(context.temp_allocator)
+	cwd, alloc_err := os.get_working_directory(context.allocator)
 	if alloc_err == nil {
 		s.cwd = cwd
 	} else {
@@ -62,6 +62,8 @@ shell_state_destroy :: proc(s: ^ShellState) {
 	for rem in s.bg_processes {
 		jobs.destroy_job(rem) //is this good
 	}
+	delete(s.cwd)
+	delete(s.old_wd)
 	delete(s.bg_processes)
 }
 
