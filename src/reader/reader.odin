@@ -30,6 +30,9 @@ Key :: enum {
 	Ctrl_D,
 	Ctrl_L,
 	Ctrl_W,
+	Ctrl_R,
+	Ctrl_P,
+	Ctrl_N,
 	BackSpace,
 	Tab,
 	Enter,
@@ -107,6 +110,12 @@ read_key :: proc(stream: io.Stream) -> Input {
 		return .Tab
 	case 10, 13:
 		return .Enter
+	case 14:
+		return .Ctrl_N
+	case 16:
+		return .Ctrl_P
+	case 18:
+		return .Ctrl_R
 	case 23:
 		return .Ctrl_W
 	case 27:
@@ -298,6 +307,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 	clear_buf(r)
 	render(r.prompt)
 	// print(r)
+	search_query := ""
 	for {
 		key := read_key(stream)
 
@@ -308,17 +318,55 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 		case Interrupt:
 			return .Interrupt
 		case rune:
+			search_query = ""
+			r.hist.idx = len(r.hist.entries)
 			add_to_buffer(r, v)
 			print(r)
 		case Key:
 			#partial switch v {
 			case .Ctrl_C:
+				search_query = ""
+				r.hist.idx = len(r.hist.entries)
 				handle_ctrlc(r, stream)
 			case .Ctrl_D:
 				return handle_ctrld(r)
 			case .Ctrl_L:
 				render(CursorControl[.ClearScreen] + CursorControl[.Home])
 				print(r)
+			case .Ctrl_P:
+				if search_query == "" && len(r.line_buffer) > 0 {
+					search_query = utf8.runes_to_string(r.line_buffer[:], context.temp_allocator)
+				}
+
+				if search_query != "" {
+					if entry, ok := hist_prev_query(r.hist, search_query); ok {
+						clear_buf(r)
+						add_string(r, entry)
+						print(r)
+					}
+				} else {
+					if entry, ok := hist_prev(r.hist); ok {
+						clear_buf(r)
+						add_string(r, entry)
+						print(r)
+					}
+				}
+
+			case .Ctrl_N:
+				if search_query != "" {
+					if entry, ok := hist_next_query(r.hist, search_query); ok {
+						clear_buf(r)
+						add_string(r, entry)
+						print(r)
+					}
+				} else {
+					if entry, ok := hist_next(r.hist); ok {
+						clear_buf(r)
+						add_string(r, entry)
+						print(r)
+					}
+				}
+			case .Ctrl_R: //TODO
 			case .Enter:
 				n := len(r.line_buffer)
 
@@ -343,12 +391,16 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				render("\r\n")
 				return .Line_Ready
 			case .BackSpace:
+				search_query = ""
+				r.hist.idx = len(r.hist.entries)
 				delete_from_buffer(r)
 				print(r)
 			case .Tab:
 			//how to handle this?
 			//TODO:add searching for binaries and show them?
 			case .Ctrl_W:
+				search_query = ""
+				r.hist.idx = len(r.hist.entries)
 				delete_word(r)
 				print(r)
 			case .Left_Arrow:

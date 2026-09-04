@@ -47,7 +47,6 @@ history_delete :: proc(hist: ^History) {
 	free(hist)
 }
 
-//I hate naming
 hist_prev :: proc(hist: ^History) -> (entry: string, ok: bool) {
 	if hist.idx <= 0 || len(hist.entries) == 0 {
 		ok = false
@@ -59,6 +58,20 @@ hist_prev :: proc(hist: ^History) -> (entry: string, ok: bool) {
 	return
 }
 
+hist_prev_query :: proc(hist: ^History, query: string) -> (entry: string, ok: bool) {
+	if hist.idx <= 0 || len(hist.entries) == 0 {
+		ok = false
+		return
+	}
+	for i := hist.idx - 1; i >= 0; i -= 1 {
+		if strings.contains(hist.entries[i], query) {
+			hist.idx = i
+			return hist.entries[i], true
+		}
+	}
+	return "", false
+}
+
 hist_next :: proc(hist: ^History) -> (entry: string, ok: bool) {
 	if len(hist.entries) == 0 || hist.idx >= len(hist.entries) - 1 {
 		ok = false
@@ -68,6 +81,22 @@ hist_next :: proc(hist: ^History) -> (entry: string, ok: bool) {
 	entry = hist.entries[hist.idx]
 	ok = true
 	return
+}
+
+hist_next_query :: proc(hist: ^History, query: string) -> (entry: string, ok: bool) {
+	if len(hist.entries) == 0 || hist.idx >= len(hist.entries) - 1 {
+		ok = false
+		return
+	}
+
+	for i := hist.idx + 1; i < len(hist.entries); i += 1 {
+		if strings.contains(hist.entries[i], query) {
+			hist.idx = i
+			return hist.entries[i], true
+		}
+	}
+
+	return "", false
 }
 
 hist_add_entry :: proc(hist: ^History, entry: string) {
@@ -95,6 +124,18 @@ history_save :: proc(hist: ^History) -> os.Error {
 
 	hist.is_dirty = false
 	return nil
+}
+
+history_search :: proc(hist: ^History, prefix: string) -> string {
+	if len(hist.entries) == 0 || hist.idx <= 0 {
+		return ""
+	}
+	for entry in hist.entries {
+		if strings.has_prefix(entry, prefix) {
+			return entry
+		}
+	}
+	return ""
 }
 
 @(private = "file")
