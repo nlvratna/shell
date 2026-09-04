@@ -1,12 +1,10 @@
 #+private
 package reader
 
-import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
-// import posix "core:sys/posix"
 
 import "../state"
 
@@ -24,6 +22,7 @@ history_init :: proc(hist: ^History, s: ^state.ShellState) {
 	if v, ok := s.vars["HISTSIZE"]; ok {
 		size, ok = strconv.parse_int(v)
 	}
+	//use thread maybe?
 	path := get_file_path(s)
 	entries := get_entries(path)
 
@@ -77,6 +76,28 @@ hist_add_entry :: proc(hist: ^History, entry: string) {
 	hist.idx = len(hist.entries)
 }
 
+history_save :: proc(hist: ^History) -> os.Error {
+	if !hist.is_dirty || hist.file_path == "" {
+		return nil
+	}
+
+	file, err := os.open(hist.file_path, {.Write, .Create, .Append})
+	if err != nil {
+		return err
+	}
+	defer os.close(file)
+
+	if len(hist.entries) > 0 {
+		last := hist.entries[len(hist.entries) - 1]
+		os.write_string(file, last)
+		os.write_string(file, "\n")
+	}
+
+	hist.is_dirty = false
+	return nil
+}
+
+@(private = "file")
 get_file_path :: proc(s: ^state.ShellState) -> string {
 	if v, ok := s.vars["HISTFILE"]; ok {
 		return v
@@ -93,27 +114,30 @@ get_file_path :: proc(s: ^state.ShellState) -> string {
 	return ""
 }
 
+@(private = "file")
 get_entries :: proc(file_path: string) -> (entries: [dynamic]string) {
 	entries = make([dynamic]string)
+	if file_path == "" do return
 
 	file, err := os.open(file_path, {.Read})
 	if err != nil {
-		fmt.eprintf("couldn't open the file:%v\n", err)
-		return
+		switch err {
+		case .Not_Exist:
+			return
+		case:
+			return
+		}
 	}
 	defer os.close(file)
 
 	bytes, r_err := os.read_entire_file_from_file(file, context.temp_allocator)
-	if r_err != nil {
-		fmt.eprintf("couldn't read from the history file:%v\n", err)
-		return
-	}
+	if r_err != nil do return
 
-	content := string(bytes)
-	lines := strings.split_lines(content, context.temp_allocator)
-
+	lines := strings.split_lines(string(bytes), context.temp_allocator)
 	for line in lines {
-		append(&entries, strings.clone(line))
+		if len(line) > 0 {
+			append(&entries, strings.clone(line))
+		}
 	}
 
 	return

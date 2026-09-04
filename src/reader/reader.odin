@@ -182,11 +182,12 @@ read_line :: proc(r: ^ReaderState, stream: io.Stream, prompt: string) -> InputEv
 	type := read(r, stream)
 
 	data := utf8.runes_to_string(r.cmd_buffer[:], context.temp_allocator)
+	hist_add_entry(r.hist, data)
+	history_save(r.hist)
 
 	if type == .Read_Error {
 		return InputEvent{err = data, type = type}
 	} else if type == .Line_Ready {
-		hist_add_entry(r.hist, data)
 		return InputEvent{data = data, type = type}
 	} else if type == .Exit_Shell {
 		return InputEvent{type = type}
