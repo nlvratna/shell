@@ -88,7 +88,6 @@ run_interactive :: proc() {
 				reader.render_error(exec.msg)
 				continue
 			}
-			s.last_cmd_status = exec.status
 			if exec.state == .Background || exec.state == .Suspended {
 				message := fmt.tprintf("[%d]- %d\n", len(s.bg_processes) + 1, exec.job.pgid)
 				reader.render(message)

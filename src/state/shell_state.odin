@@ -50,6 +50,11 @@ shell_state_init :: proc(s: ^ShellState) {
 }
 
 shell_state_destroy :: proc(s: ^ShellState) {
+	for k, v in s.vars {
+		delete(k)
+		delete(v)
+	}
+	delete(s.vars)
 	for bin in s.binaries {
 		delete(bin)
 	}

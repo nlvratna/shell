@@ -54,31 +54,36 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 //Previous BUG:early call of new process before a command is executed creates a set of different groups for every process instead of all of them logically needing to be in the process group
 //FIX:don't create process here as the first cmd is not doing anything until the actual command is found
 exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+	status: int
+	err: EventError
 
 	#partial switch c in cmd {
 	case ^parser.IfClause:
-		return exec_if(c, s, j)
+		status, err = exec_if(c, s, j)
 	case ^parser.ForLoop:
-		return exec_for(c, s, j)
+		status, err = exec_for(c, s, j)
 	case ^parser.CommandList:
-		return exec_cmdlist(c, s, j)
+		status, err = exec_cmdlist(c, s, j)
 	case ^parser.Pipeline:
-		return exec_pipe(c, s, j)
+		status, err = exec_pipe(c, s, j)
 	case ^parser.WhileLoop:
-		return exec_while(c, s, j)
+		status, err = exec_while(c, s, j)
 	case ^parser.UntilLoop:
-		return exec_until(c, s, j)
+		status, err = exec_until(c, s, j)
 	case ^parser.CaseClause:
-		return exec_case(c, s, j)
+		status, err = exec_case(c, s, j)
 	case ^parser.Subshell:
-		return exec_subshell(c, s, j)
+		status, err = exec_subshell(c, s, j)
 	case ^parser.BraceGroup:
-		return exec_brace(c, s, j)
+		status, err = exec_brace(c, s, j)
 	case ^parser.RedirectWrap:
-		return exec_redirects(c, s, j)
+		status, err = exec_redirects(c, s, j)
 	case:
-		return exec_simple(c.(^parser.SimpleCommand), s, j)
+		status, err = exec_simple(c.(^parser.SimpleCommand), s, j)
 	}
+
+	sync_exit_status(s, status)
+	return status, err
 }
 
 exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
@@ -130,26 +135,87 @@ exec_simple :: proc(
 		if len(c.assigns) == 1 {
 			assign := c.assigns[0]
 			idx := strings.index_byte(assign, '=')
-			if idx == -1 do return 0, .None //this could be error
-			key := strings.clone(assign[:idx])
-			val := strings.clone(assign[idx + 1:])
-			s.vars[key] = val
+			if idx == -1 do return 0, .None
+
+			key_slice := assign[:idx]
+			raw_val := assign[idx + 1:]
+
+			chunks := jobs.parse_word_into_args(raw_val, s.vars)
+			builder := strings.builder_make()
+
+			for chunk in chunks {
+				if chunk.type == .Text {
+					strings.write_string(&builder, chunk.val)
+				} else if chunk.type == .Command {
+					output := capture_command_output(chunk.val, s)
+					strings.write_string(&builder, output)
+					delete(output)
+				}
+				delete(chunk.val)
+			}
+			delete(chunks)
+
+			new_val := strings.to_string(builder)
+
+			if old_val, exists := s.vars[key_slice]; exists {
+				delete(old_val)
+
+				s.vars[key_slice] = new_val
+			} else {
+				s.vars[strings.clone(key_slice)] = new_val
+			}
 		}
 		return 0, .None
 	}
 
+	final_args := make([dynamic]string)
+	defer {
+		for a in final_args do delete(a)
+		delete(final_args)
+	}
 
+	for word in c.words {
+		chunks := jobs.parse_word_into_args(word, s.vars)
+
+		builder := strings.builder_make()
+		for chunk in chunks {
+			if chunk.type == .Text {
+				strings.write_string(&builder, chunk.val)
+			} else if chunk.type == .Command {
+				output := capture_command_output(chunk.val, s)
+				strings.write_string(&builder, output)
+				delete(output)
+			}
+			delete(chunk.val)
+		}
+		delete(chunks)
+
+		final_str := strings.to_string(builder)
+
+		// Run globbing and quote removal on the result
+		globs := jobs.expand_glob(final_str)
+		for g in globs {
+			unquoted := jobs.remove_quotes(g)
+			append(&final_args, unquoted) // final_args owns this memory now
+			delete(g)
+		}
+		delete(globs)
+		delete(final_str)
+	}
+
+	// --- 2. Build Process ---
 	p := new(jobs.Process)
 	jobs.init_process(p, j)
 
 	if len(j.procs) == 0 {
 		p.is_first = true
 	}
-
 	append(&j.procs, p)
 
-	jobs.populate_process(s.vars, p, c)
+	// Pass the pre-computed final strings to populate_process
+	jobs.populate_process(s.vars, p, c, final_args)
 
+	// --- 3. Execute ---
 	cmd_name := p.expanded_args[0]
 	if cmd_name == "break" {
 		jobs.destroy_process(p)
@@ -160,36 +226,22 @@ exec_simple :: proc(
 		return 0, .Continue
 	}
 
-
-	if c.is_bg {
-		j.is_bg = true
-	}
+	if c.is_bg do j.is_bg = true
 
 	err := spawn_process(s, p, j)
-	if err != .None {
-		return -1, err
-	}
+	if err != .None do return -1, err
 
-	if p.is_first {
-		j.pgid = p.pid
-	}
+	if p.is_first do j.pgid = p.pid
 
+	posix.setpgid(p.pid, j.pgid)
 
-	posix.setpgid(p.pid, j.pgid) //place the child in the job process group
+	if c.is_bg do return 0, .None
 
-	if c.is_bg {
-		return 0, .None
-	}
-
-	//Ignore terminal input and output so shell can take back the control
 	posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
 	posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
+	posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid)
 
-	posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid) //handle the terminal to child
-
-	if j.is_pipe {
-		return 0, .None
-	}
+	if j.is_pipe do return 0, .None
 	return wait_job(s, j), .None
 }
 
@@ -617,4 +669,69 @@ get_state :: proc(status: int, j: ^jobs.Job) -> ExecState {
 	}
 
 	return .Failed
+}
+
+@(private)
+capture_command_output :: proc(cmd_string: string, s: ^state.ShellState) -> string {
+	p: parser.Parser
+	parser.parser_init(&p, cmd_string)
+	event := parser.parse(&p)
+
+	if _, ok := event.parse_event_type.(parser.Ast_Ready); !ok {
+		return ""
+	}
+
+	pipe_fds: [2]posix.FD
+	if posix.pipe(&pipe_fds) != .OK do return ""
+
+	pid := posix.fork()
+	if pid == 0 {
+		// --- CHILD PROCESS ---
+		posix.close(pipe_fds[0]) // Close read end
+
+		posix.dup2(pipe_fds[1], posix.STDOUT_FILENO)
+		posix.close(pipe_fds[1])
+
+		j := new(jobs.Job)
+		jobs.init_job(j, cmd_string)
+
+		status, _ := exec_cmd(event.command, s, j)
+		jobs.destroy_job(j)
+
+		posix.exit(i32(status))
+	}
+
+	// --- PARENT PROCESS ---
+	posix.close(pipe_fds[1]) // Close write end
+
+	builder := strings.builder_make()
+	buf: [1024]u8
+
+	for {
+		bytes_read := posix.read(pipe_fds[0], raw_data(buf[:]), len(buf))
+		if bytes_read <= 0 do break
+		strings.write_bytes(&builder, buf[:bytes_read])
+	}
+
+	posix.close(pipe_fds[0])
+
+	posix.waitpid(pid, nil, nil)
+
+	result := strings.to_string(builder)
+	for len(result) > 0 && result[len(result) - 1] == '\n' {
+		result = result[:len(result) - 1]
+	}
+	return result
+}
+
+@(private)
+sync_exit_status :: proc(s: ^state.ShellState, status: int) {
+	s.last_cmd_status = status
+	status_str := fmt.aprintf("%d", status)
+	if old_val, exists := s.vars["?"]; exists {
+		delete(old_val)
+		s.vars["?"] = status_str
+	} else {
+		s.vars[strings.clone("?")] = status_str
+	}
 }
