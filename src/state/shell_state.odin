@@ -87,4 +87,3 @@ enable_raw :: proc(s: ^ShellState) {
 disable_raw :: proc(s: ^ShellState) {
 	posix.tcsetattr(posix.STDIN_FILENO, .TCSAFLUSH, &s.termios)
 }
-

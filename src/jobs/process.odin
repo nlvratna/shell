@@ -193,18 +193,25 @@ parse_word_into_args :: proc(word: string, env: map[string]string) -> [dynamic]A
 	return args
 }
 
-// Globbing and Quotes
 expand_glob :: proc(word: string) -> [dynamic]string {
 	results := make([dynamic]string)
+
 	matches, err := filepath.glob(word)
+
 	if err == nil && len(matches) > 0 {
-		for match in matches do append(&results, strings.clone(match))
+		for match in matches {
+			append(&results, strings.clone(match))
+		}
+		for match in matches {
+			delete(match)
+		}
+		delete(matches)
 	} else {
 		append(&results, strings.clone(word))
 	}
+
 	return results
 }
-
 remove_quotes :: proc(word: string) -> string {
 	builder := strings.builder_make()
 	in_single, in_double, escaped := false, false, false
