@@ -40,6 +40,8 @@ shell_state_init :: proc(s: ^ShellState) {
 		fmt.println("Error is here")
 	}
 	s.vars = make(map[string]string)
+	home := os.get_env("HOME", context.temp_allocator)
+	s.vars[strings.clone("HOME")] = strings.clone(home) //is something wrong with this
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
 	s.builtins = make(map[string]BuiltinProc)

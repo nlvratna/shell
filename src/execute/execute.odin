@@ -155,7 +155,9 @@ exec_simple :: proc(
 
 	final_args := make([dynamic]string)
 	defer {
-		for a in final_args do delete(a)
+		for arg in final_args {
+			delete(arg)
+		}
 		delete(final_args)
 	}
 

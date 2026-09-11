@@ -90,9 +90,6 @@ populate_process :: proc(
 	return .None
 }
 
-// ---------------------------------------------------------
-// The AST-style Expansion Parser
-// ---------------------------------------------------------
 parse_word_into_args :: proc(word: string, env: map[string]string) -> [dynamic]Arg {
 	args := make([dynamic]Arg)
 
