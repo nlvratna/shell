@@ -140,22 +140,7 @@ exec_simple :: proc(
 			key_slice := assign[:idx]
 			raw_val := assign[idx + 1:]
 
-			chunks := jobs.parse_word_into_args(raw_val, s.vars)
-			builder := strings.builder_make()
-
-			for chunk in chunks {
-				if chunk.type == .Text {
-					strings.write_string(&builder, chunk.val)
-				} else if chunk.type == .Command {
-					output := capture_command_output(chunk.val, s)
-					strings.write_string(&builder, output)
-					delete(output)
-				}
-				delete(chunk.val)
-			}
-			delete(chunks)
-
-			new_val := strings.to_string(builder)
+			new_val := expand_word(raw_val, s)
 
 			if old_val, exists := s.vars[key_slice]; exists {
 				delete(old_val)
@@ -175,35 +160,18 @@ exec_simple :: proc(
 	}
 
 	for word in c.words {
-		chunks := jobs.parse_word_into_args(word, s.vars)
-
-		builder := strings.builder_make()
-		for chunk in chunks {
-			if chunk.type == .Text {
-				strings.write_string(&builder, chunk.val)
-			} else if chunk.type == .Command {
-				output := capture_command_output(chunk.val, s)
-				strings.write_string(&builder, output)
-				delete(output)
-			}
-			delete(chunk.val)
-		}
-		delete(chunks)
-
-		final_str := strings.to_string(builder)
-
+		final_str := expand_word(word, s)
 		// Run globbing and quote removal on the result
 		globs := jobs.expand_glob(final_str)
 		for g in globs {
 			unquoted := jobs.remove_quotes(g)
-			append(&final_args, unquoted) // final_args owns this memory now
+			append(&final_args, unquoted)
 			delete(g)
 		}
 		delete(globs)
 		delete(final_str)
 	}
 
-	// --- 2. Build Process ---
 	p := new(jobs.Process)
 	jobs.init_process(p, j)
 
@@ -212,10 +180,8 @@ exec_simple :: proc(
 	}
 	append(&j.procs, p)
 
-	// Pass the pre-computed final strings to populate_process
 	jobs.populate_process(s.vars, p, c, final_args)
 
-	// --- 3. Execute ---
 	cmd_name := p.expanded_args[0]
 	if cmd_name == "break" {
 		jobs.destroy_process(p)
@@ -224,6 +190,11 @@ exec_simple :: proc(
 	if cmd_name == "continue" {
 		jobs.destroy_process(p)
 		return 0, .Continue
+	}
+
+	if cmd_name == "cd" {
+		status := builtins.cd(p, s)
+		return status, .None
 	}
 
 	if c.is_bg do j.is_bg = true
@@ -686,7 +657,6 @@ capture_command_output :: proc(cmd_string: string, s: ^state.ShellState) -> stri
 
 	pid := posix.fork()
 	if pid == 0 {
-		// --- CHILD PROCESS ---
 		posix.close(pipe_fds[0]) // Close read end
 
 		posix.dup2(pipe_fds[1], posix.STDOUT_FILENO)
@@ -701,7 +671,6 @@ capture_command_output :: proc(cmd_string: string, s: ^state.ShellState) -> stri
 		posix.exit(i32(status))
 	}
 
-	// --- PARENT PROCESS ---
 	posix.close(pipe_fds[1]) // Close write end
 
 	builder := strings.builder_make()
@@ -734,4 +703,24 @@ sync_exit_status :: proc(s: ^state.ShellState, status: int) {
 	} else {
 		s.vars[strings.clone("?")] = status_str
 	}
+}
+
+@(private)
+expand_word :: proc(word: string, s: ^state.ShellState) -> string {
+	chunks := jobs.parse_word_into_args(word, s.vars)
+	builder := strings.builder_make()
+
+	for chunk in chunks {
+		if chunk.type == .Text {
+			strings.write_string(&builder, chunk.val)
+		} else if chunk.type == .Command {
+			output := capture_command_output(chunk.val, s)
+			strings.write_string(&builder, output)
+			delete(output)
+		}
+		delete(chunk.val)
+	}
+	delete(chunks)
+
+	return strings.to_string(builder)
 }

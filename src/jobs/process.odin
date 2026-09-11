@@ -212,6 +212,7 @@ expand_glob :: proc(word: string) -> [dynamic]string {
 
 	return results
 }
+
 remove_quotes :: proc(word: string) -> string {
 	builder := strings.builder_make()
 	in_single, in_double, escaped := false, false, false
