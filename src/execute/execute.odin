@@ -1,5 +1,6 @@
 package execute
 
+import "../../builtins"
 import "../jobs"
 import "../parser"
 import "../reader"
@@ -194,12 +195,13 @@ exec_simple :: proc(
 		return 0, .Continue
 	}
 
+	if c.is_bg do j.is_bg = true
+
 	if cmd_name == "cd" {
 		status := builtins.cd(p, s)
 		return status, .None
 	}
 
-	if c.is_bg do j.is_bg = true
 
 	err := spawn_process(s, p, j)
 	if err != .None do return -1, err

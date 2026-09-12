@@ -3,11 +3,12 @@ package state
 import "../jobs"
 import "core:fmt"
 import "core:os"
+import "core:strings"
 
 import posix "core:sys/posix"
 
 
-BuiltinProc :: proc(s: ^ShellState) -> int
+BuiltinProc :: proc(p: ^jobs.Process, s: ^ShellState) -> int //have error here instead?
 
 TermState :: struct {
 	termios: posix.termios,
