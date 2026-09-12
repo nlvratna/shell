@@ -18,6 +18,10 @@ cd :: proc(p: ^jobs.Process, s: ^shell.ShellState) -> int {
 		}
 		posix.chdir(strings.clone_to_cstring(home, context.temp_allocator))
 	} else if len(p.expanded_args) == 3 {
+		if p.expanded_args[1] == "-" {
+			reader.render_error(fmt.tprintf("cd: unsupported flag: %s", p.expanded_args[1]))
+			return -1
+		}
 		res := posix.chdir(p.expanded_args[1])
 		if res == .FAIL {
 			msg := fmt.tprintf("cd: %s: No such file or directory", p.expanded_args[1])
