@@ -1,6 +1,6 @@
 package execute
 
-import "../../builtins"
+// import "../../builtins"
 import "../jobs"
 import "../parser"
 import "../reader"
@@ -11,14 +11,26 @@ import "core:strings"
 import posix "core:sys/posix"
 
 
-EventError :: enum {
+ErrEvent :: enum {
 	None,
 	Break,
 	Continue,
 	Fork_Error,
 	Env_Error,
 	Exec_Error,
+	Builtin_Err,
 }
+
+BuiltinError :: struct {
+	msg: string,
+}
+
+//I hate naming
+ExecError :: struct {
+	event: ErrEvent,
+	msg:   string,
+}
+
 
 ExecState :: enum {
 	Finished,
@@ -31,9 +43,8 @@ ExecState :: enum {
 ExecEvent :: struct {
 	state:  ExecState,
 	status: int,
-	err:    EventError,
+	err:    ExecError,
 	job:    ^jobs.Job,
-	msg:    string,
 }
 
 
@@ -42,7 +53,7 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 	jobs.init_job(j, cmd_string)
 
 	status, err := exec_cmd(cmd, s, j)
-	if err != .None {
+	if err.event != .None {
 		return ExecEvent{err = err}
 	}
 
@@ -54,9 +65,9 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 
 //Previous BUG:early call of new process before a command is executed creates a set of different groups for every process instead of all of them logically needing to be in the process group
 //FIX:don't create process here as the first cmd is not doing anything until the actual command is found
-exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	status: int
-	err: EventError
+	err: ExecError
 
 	#partial switch c in cmd {
 	case ^parser.IfClause:
@@ -87,42 +98,6 @@ exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (in
 	return status, err
 }
 
-exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
-	in_fd := posix.FD(posix.STDIN_FILENO)
-	pipe_fds: [2]posix.FD
-
-	j.is_pipe = true
-
-	for i in 0 ..< len(c.commands) {
-		cmd := c.commands[i]
-		is_last := i == len(c.commands) - 1
-
-		if !is_last {
-			if posix.pipe(&pipe_fds) != .OK do return -1, .Exec_Error
-		}
-
-		j.stdin = in_fd
-		j.stdout = is_last ? posix.STDOUT_FILENO : posix.FD(pipe_fds[1])
-		j.remove_pipe = is_last ? posix.FD(-1) : posix.FD(pipe_fds[0])
-
-		exec_cmd(cmd, s, j)
-
-		if !is_last do posix.close(pipe_fds[1])
-		if in_fd != posix.STDIN_FILENO do posix.close(in_fd)
-		if !is_last do in_fd = pipe_fds[0]
-	}
-
-	j.is_pipe = false
-
-	status := wait_job(s, j)
-
-	if c.bang {
-		status = status == 0 ? 1 : 0
-	}
-	return status, .None
-
-}
-
 @(private)
 exec_simple :: proc(
 	c: ^parser.SimpleCommand,
@@ -130,14 +105,13 @@ exec_simple :: proc(
 	j: ^jobs.Job,
 ) -> (
 	int,
-	EventError,
+	ExecError,
 ) {
 	if len(c.words) == 0 {
 		if len(c.assigns) == 1 {
 			assign := c.assigns[0]
 			idx := strings.index_byte(assign, '=')
-			if idx == -1 do return 0, .None
-
+			if idx == -1 do return 0, ExecError{event = .None}
 			key_slice := assign[:idx]
 			raw_val := assign[idx + 1:]
 
@@ -151,7 +125,7 @@ exec_simple :: proc(
 				s.vars[strings.clone(key_slice)] = new_val
 			}
 		}
-		return 0, .None
+		return 0, ExecError{event = .None}
 	}
 
 	final_args := make([dynamic]string)
@@ -188,54 +162,93 @@ exec_simple :: proc(
 	cmd_name := p.expanded_args[0]
 	if cmd_name == "break" {
 		jobs.destroy_process(p)
-		return 0, .Break
+		return 0, ExecError{event = .Break}
 	}
 	if cmd_name == "continue" {
 		jobs.destroy_process(p)
-		return 0, .Continue
+		return 0, ExecError{event = .Continue}
 	}
 
 	if c.is_bg do j.is_bg = true
 
 	if cmd_name == "cd" {
-		status := builtins.cd(p, s)
-		return status, .None
+		status, msg := s.builtins["cd"](p, s)
+		if msg != "" {
+			return status, ExecError{msg = msg, event = .Builtin_Err}
+		}
+
+		return status, ExecError{event = .None}
 	}
 
 
 	err := spawn_process(s, p, j)
-	if err != .None do return -1, err
+	if err.event != .None do return -1, err
 
 	if p.is_first do j.pgid = p.pid
 
 	posix.setpgid(p.pid, j.pgid)
 
-	if c.is_bg do return 0, .None
+	if c.is_bg do return 0, ExecError{event = .None}
 
 	posix.signal(.SIGTTOU, auto_cast posix.SIG_IGN)
 	posix.signal(.SIGTTIN, auto_cast posix.SIG_IGN)
 	posix.tcsetpgrp(posix.STDIN_FILENO, j.pgid)
 
-	if j.is_pipe do return 0, .None
-	return wait_job(s, j), .None
+	if j.is_pipe do return 0, ExecError{event = .None}
+	return wait_job(s, j), ExecError{event = .None}
+}
+
+exec_pipe :: proc(c: ^parser.Pipeline, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
+	in_fd := posix.FD(posix.STDIN_FILENO)
+	pipe_fds: [2]posix.FD
+
+	j.is_pipe = true
+
+	for i in 0 ..< len(c.commands) {
+		cmd := c.commands[i]
+		is_last := i == len(c.commands) - 1
+
+		if !is_last {
+			if posix.pipe(&pipe_fds) != .OK do return -1, ExecError{event = .Exec_Error}
+		}
+
+		j.stdin = in_fd
+		j.stdout = is_last ? posix.STDOUT_FILENO : posix.FD(pipe_fds[1])
+		j.remove_pipe = is_last ? posix.FD(-1) : posix.FD(pipe_fds[0])
+
+		exec_cmd(cmd, s, j)
+
+		if !is_last do posix.close(pipe_fds[1])
+		if in_fd != posix.STDIN_FILENO do posix.close(in_fd)
+		if !is_last do in_fd = pipe_fds[0]
+	}
+
+	j.is_pipe = false
+
+	status := wait_job(s, j)
+
+	if c.bang {
+		status = status == 0 ? 1 : 0
+	}
+	return status, ExecError{event = .None}
 }
 
 
-exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+exec_if :: proc(c: ^parser.IfClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	cond, err := exec_cmd(c.condition, s, j)
-	if err != .None {
+	if err.event != .None {
 		return -1, err
 	}
 	if (cond == 0) {
 		exec_status, if_err := exec_cmd(c.then_branch, s, j)
-		if if_err != .None {
+		if if_err.event != .None {
 			return -1, if_err
 		}
-		return exec_status, .None
+		return exec_status, ExecError{event = .None}
 	}
 
 	if c.else_branch == nil {
-		return -1, .None
+		return -1, ExecError{event = .None}
 	}
 
 	if type_of(c.else_branch) == ^parser.IfClause {
@@ -251,15 +264,15 @@ exec_cmdlist :: proc(
 	j: ^jobs.Job,
 ) -> (
 	int,
-	EventError,
+	ExecError,
 ) {
 	left_status, left_err := exec_cmd(c.left, s, j)
-	if left_err != .None {
+	if left_err.event != .None {
 		return left_status, left_err
 	}
 
 	if c.right == nil {
-		return left_status, .None
+		return left_status, ExecError{event = .None}
 	}
 
 	#partial switch c.operator {
@@ -267,21 +280,21 @@ exec_cmdlist :: proc(
 		if left_status != 0 {
 			return exec_cmd(c.right, s, j)
 		}
-		return left_status, .None
+		return left_status, ExecError{event = .None}
 	case .ANDIF:
 		if left_status == 0 {
 			return exec_cmd(c.right, s, j)
 		}
-		return left_status, .None
+		return left_status, ExecError{event = .None}
 	case .SEMICOLON:
 		return exec_cmd(c.right, s, j)
 	case:
-		return left_status, .None
+		return left_status, ExecError{event = .None}
 	}
 }
 
 //TODO : see if it possible to reduce the code redundancy
-exec_for :: proc(c: ^parser.ForLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+exec_for :: proc(c: ^parser.ForLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	last_status: int
 	for i in 0 ..< len(c.items) {
 		s.vars[c.variable] = c.items[i]
@@ -290,81 +303,81 @@ exec_for :: proc(c: ^parser.ForLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int
 
 		last_status = status
 
-		if err == .Break {
+		if err.event == .Break {
 			break
 		}
-		if err == .Continue {
+		if err.event == .Continue {
 			continue
 		}
 
-		if err != .None {
+		if err.event != .None {
 			return status, err
 		}
 	}
-	return last_status, .None
+	return last_status, ExecError{event = .None}
 }
 
-exec_while :: proc(c: ^parser.WhileLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+exec_while :: proc(c: ^parser.WhileLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	last_status: int
 	for {
 		cond_stat, err := exec_cmd(c.condition, s, j)
 
-		if err != .None || cond_stat != 0 {
+		if err.event != .None || cond_stat != 0 {
 			break
 		}
 
 		status, body_err := exec_cmd(c.body, s, j)
 		last_status = status
 
-		if body_err == .Break {
+		if body_err.event == .Break {
 			break
 		}
 
-		if body_err == .Continue {
+		if body_err.event == .Continue {
 			continue
 		}
 
-		if body_err != .None {
+		if body_err.event != .None {
 			return status, body_err
 		}
 
 	}
 
-	return last_status, .None
+	return last_status, ExecError{event = .None}
 }
 
-exec_until :: proc(c: ^parser.UntilLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+exec_until :: proc(c: ^parser.UntilLoop, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	for {
 		cstat, err := exec_cmd(c.condition, s, j)
 
 		if cstat == 0 {
-			return cstat, .None
+			return cstat, ExecError{event = .None}
 		}
 
-		if err != .None {
+		if err.event != .None {
 			break
 		}
 
 
 		status, body_err := exec_cmd(c.body, s, j)
 
-		if body_err == .Break {
+		if body_err.event == .Break {
 			break
 		}
 
-		if body_err == .Continue {
+		if body_err.event == .Continue {
 			continue
 		}
 
-		if body_err != .None {
+		if body_err.event != .None {
 			return status, body_err
 		}
 	}
-	return 0, .None // this is 0 as it exists when until command is satisfied
+	return 0, ExecError{event = .None} // this is 0 as it exists when until command is satisfied
 }
 
 //TODO : expansion find a way for it
-exec_case :: proc(c: ^parser.CaseClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, EventError) {
+exec_case :: proc(c: ^parser.CaseClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	word := c.word
 
 	if strings.has_prefix(word, "\"") && strings.has_suffix(word, "\"") {
@@ -383,17 +396,10 @@ exec_case :: proc(c: ^parser.CaseClause, s: ^state.ShellState, j: ^jobs.Job) -> 
 			}
 		}
 	}
-	return 1, .None
+	return 1, ExecError{event = .None}
 }
 
-exec_brace :: proc(
-	c: ^parser.BraceGroup,
-	s: ^state.ShellState,
-	j: ^jobs.Job,
-) -> (
-	int,
-	EventError,
-) {
+exec_brace :: proc(c: ^parser.BraceGroup, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	return exec_cmd(c.body, s, j)
 }
 
@@ -403,12 +409,12 @@ exec_subshell :: proc(
 	j: ^jobs.Job,
 ) -> (
 	int,
-	EventError,
+	ExecError,
 ) {
 	pid := posix.fork()
 
 	if pid == -1 {
-		return -1, .Fork_Error
+		return -1, ExecError{event = .Fork_Error}
 	}
 
 	if pid == 0 {
@@ -419,8 +425,7 @@ exec_subshell :: proc(
 
 	status := reap_process(pid)
 
-	return status, .None
-}
+	return status, ExecError{event = .None}}
 
 exec_redirects :: proc(
 	c: ^parser.RedirectWrap,
@@ -428,7 +433,7 @@ exec_redirects :: proc(
 	j: ^jobs.Job,
 ) -> (
 	int,
-	EventError,
+	ExecError,
 ) {
 	stdin := posix.dup(posix.STDIN_FILENO)
 	stdout := posix.dup(posix.STDOUT_FILENO)
@@ -475,10 +480,10 @@ reap_process :: proc(pid: posix.pid_t) -> int {
 }
 
 @(private)
-spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (err: EventError) {
+spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (err: ExecError) {
 	pid := posix.fork()
 	if pid == -1 {
-		return .Fork_Error
+		return ExecError{event = .Fork_Error}
 	}
 	if pid == 0 {
 		child_setup(p, j)
@@ -492,7 +497,7 @@ spawn_process :: proc(s: ^state.ShellState, p: ^jobs.Process, j: ^jobs.Job) -> (
 		posix.exit(127)
 	}
 	p.pid = pid
-	return .None
+	return {}
 }
 
 @(private)

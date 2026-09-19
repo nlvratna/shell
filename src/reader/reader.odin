@@ -430,4 +430,3 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 
 	}
 }
-

@@ -8,7 +8,7 @@ import "core:strings"
 import posix "core:sys/posix"
 
 
-BuiltinProc :: proc(p: ^jobs.Process, s: ^ShellState) -> int //have error here instead?
+BuiltinProc :: proc(p: ^jobs.Process, s: ^ShellState) -> (int, string) //have error here instead?
 
 TermState :: struct {
 	termios: posix.termios,
@@ -45,7 +45,7 @@ shell_state_init :: proc(s: ^ShellState) {
 	s.vars[strings.clone("HOME")] = strings.clone(home) //is something wrong with this
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
-	s.builtins = make(map[string]BuiltinProc)
+	s.builtins = make(map[string]BuiltinProc) //the issue is here // I haven't registered the function I also have cyclic import here how to fix
 
 
 	result := posix.tcgetattr(posix.STDIN_FILENO, &s.termios)
@@ -62,9 +62,6 @@ shell_state_destroy :: proc(s: ^ShellState) {
 		delete(bin)
 	}
 	delete(s.binaries)
-	for k in s.builtins {
-		delete(k)
-	}
 	delete(s.builtins)
 
 	for rem in s.bg_processes {

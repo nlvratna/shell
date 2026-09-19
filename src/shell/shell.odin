@@ -1,5 +1,6 @@
 package shell
 
+import "../../builtins"
 import "../execute"
 import "../jobs"
 import "../parser"
@@ -14,6 +15,7 @@ s: state.ShellState
 
 init_shell :: proc() {
 	state.shell_state_init(&s)
+	s.builtins["cd"] = builtins.cd
 }
 
 destroy_shell :: proc() {
@@ -84,8 +86,8 @@ run_interactive :: proc() {
 
 			// parser.print_ast(parse_event.command)
 			exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
-			if exec.err != .None {
-				reader.render_error(exec.msg)
+			if exec.err.event != .None {
+				reader.render_error(exec.err.msg) //this look ugly?
 				continue
 			}
 			if exec.state == .Background || exec.state == .Suspended {
