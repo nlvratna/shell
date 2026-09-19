@@ -84,11 +84,9 @@ run_interactive :: proc() {
 			reader.clear_cmd_buf(&r)
 			curr_prompt = s.prompt
 
-			// parser.print_ast(parse_event.command)
 			exec := execute.exec(parse_event.command, &s, parse_event.cmd_string)
 			if exec.err.event != .None {
 				reader.render_error(exec.err.msg) //this look ugly?
-				continue
 			}
 			if exec.state == .Background || exec.state == .Suspended {
 				message := fmt.tprintf("[%d]- %d\n", len(s.bg_processes) + 1, exec.job.pgid)

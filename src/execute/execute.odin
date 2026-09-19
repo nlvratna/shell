@@ -54,7 +54,7 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 
 	status, err := exec_cmd(cmd, s, j)
 	if err.event != .None {
-		return ExecEvent{err = err}
+		return ExecEvent{job = j, err = err}
 	}
 
 	state := get_state(status, j)
