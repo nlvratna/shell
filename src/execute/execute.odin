@@ -63,8 +63,6 @@ exec :: proc(cmd: parser.Command, s: ^state.ShellState, cmd_string: string) -> E
 }
 
 
-//Previous BUG:early call of new process before a command is executed creates a set of different groups for every process instead of all of them logically needing to be in the process group
-//FIX:don't create process here as the first cmd is not doing anything until the actual command is found
 exec_cmd :: proc(cmd: parser.Command, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	status: int
 	err: ExecError
@@ -376,7 +374,6 @@ exec_until :: proc(c: ^parser.UntilLoop, s: ^state.ShellState, j: ^jobs.Job) -> 
 	return 0, ExecError{event = .None} // this is 0 as it exists when until command is satisfied
 }
 
-//TODO : expansion find a way for it
 exec_case :: proc(c: ^parser.CaseClause, s: ^state.ShellState, j: ^jobs.Job) -> (int, ExecError) {
 	word := c.word
 

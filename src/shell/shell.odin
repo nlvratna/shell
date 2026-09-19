@@ -42,10 +42,6 @@ run_interactive :: proc() {
 	curr_prompt := s.prompt
 	s.is_interactive = cast(bool)posix.isatty(posix.STDIN_FILENO)
 
-
-	// state.enable_raw(&s)
-	// defer state.disable_raw(&s)
-
 	r: reader.ReaderState
 	reader.reader_init(&r, &s)
 	defer reader.reader_destroy(&r)

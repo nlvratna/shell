@@ -42,10 +42,11 @@ shell_state_init :: proc(s: ^ShellState) {
 	}
 	s.vars = make(map[string]string)
 	home := os.get_env("HOME", context.temp_allocator)
-	s.vars[strings.clone("HOME")] = strings.clone(home) //is something wrong with this
+	s.vars[strings.clone("HOME")] = strings.clone(home)
+
 	//TODO: set binaries and builtins
 	s.binaries = make([dynamic]string)
-	s.builtins = make(map[string]BuiltinProc) //the issue is here // I haven't registered the function I also have cyclic import here how to fix
+	s.builtins = make(map[string]BuiltinProc)
 
 
 	result := posix.tcgetattr(posix.STDIN_FILENO, &s.termios)
@@ -65,7 +66,7 @@ shell_state_destroy :: proc(s: ^ShellState) {
 	delete(s.builtins)
 
 	for rem in s.bg_processes {
-		jobs.destroy_job(rem) //is this good
+		jobs.destroy_job(rem)
 	}
 	delete(s.cwd)
 	delete(s.old_wd)
