@@ -191,8 +191,10 @@ read_line :: proc(r: ^ReaderState, stream: io.Stream, prompt: string) -> InputEv
 	type := read(r, stream)
 
 	data := utf8.runes_to_string(r.cmd_buffer[:], context.temp_allocator)
-	hist_add_entry(r.hist, data)
-	history_save(r.hist)
+	if strings.trim_space(data) != "" {
+		hist_add_entry(r.hist, data)
+		history_save(r.hist)
+	}
 
 	if type == .Read_Error {
 		return InputEvent{err = data, type = type}
@@ -308,6 +310,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 	render(r.prompt)
 	// print(r)
 	search_query := ""
+	history_active := false
 	for {
 		key := read_key(stream)
 
@@ -318,6 +321,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 		case Interrupt:
 			return .Interrupt
 		case rune:
+			history_active = false
 			search_query = ""
 			r.hist.idx = len(r.hist.entries)
 			add_to_buffer(r, v)
@@ -334,8 +338,16 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				render(CursorControl[.ClearScreen] + CursorControl[.Home])
 				print(r)
 			case .Ctrl_P:
-				if search_query == "" && len(r.line_buffer) > 0 {
-					search_query = utf8.runes_to_string(r.line_buffer[:], context.temp_allocator)
+				if !history_active {
+					history_active = true
+					if len(r.line_buffer) > 0 {
+						search_query = utf8.runes_to_string(
+							r.line_buffer[:],
+							context.temp_allocator,
+						)
+					} else {
+						search_query = ""
+					}
 				}
 
 				if search_query != "" {
@@ -353,6 +365,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				}
 
 			case .Ctrl_N:
+				if !history_active do continue
+
 				if search_query != "" {
 					if entry, ok := hist_next_query(r.hist, search_query); ok {
 						clear_buf(r)
@@ -391,6 +405,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				render("\r\n")
 				return .Line_Ready
 			case .BackSpace:
+				history_active = false
 				search_query = ""
 				r.hist.idx = len(r.hist.entries)
 				delete_from_buffer(r)
@@ -399,6 +414,7 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 			//how to handle this?
 			//TODO:add searching for binaries and show them?
 			case .Ctrl_W:
+				history_active = false
 				search_query = ""
 				r.hist.idx = len(r.hist.entries)
 				delete_word(r)
@@ -410,6 +426,9 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 				move_right(r)
 				print(r)
 			case .Up_Arrow:
+				history_active = true
+				search_query = ""
+
 				if entry, ok := hist_prev(r.hist); ok {
 					//clear the line on the screen and render the command from history
 					//clear the line buffer and put the entry to buffer
@@ -419,6 +438,8 @@ read :: proc(r: ^ReaderState, stream: io.Stream) -> InputEventType {
 					print(r)
 				}
 			case .Down_Arrow:
+				if !history_active do continue
+
 				if entry, ok := hist_next(r.hist); ok {
 					render(CursorControl[.ClearLine])
 					clear_buf(r)

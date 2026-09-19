@@ -176,11 +176,10 @@ get_entries :: proc(file_path: string) -> (entries: [dynamic]string) {
 
 	lines := strings.split_lines(string(bytes), context.temp_allocator)
 	for line in lines {
-		if len(line) > 0 {
+		if len(strings.trim_space(line)) > 0 {
 			append(&entries, strings.clone(line))
 		}
 	}
 
 	return
 }
-
